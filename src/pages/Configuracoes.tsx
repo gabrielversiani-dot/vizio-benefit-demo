@@ -20,6 +20,7 @@ import {
   Info
 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 const mockReports = [
   { id: 1, nome: "Relatório Mensal de Sinistralidade", tipo: "PDF", frequencia: "Mensal", ativo: true },
@@ -75,6 +76,141 @@ const downloadTemplate = (type: string) => {
   document.body.removeChild(link);
   
   toast.success(`Template ${filename} baixado com sucesso!`);
+};
+
+const handleImport = async (type: string, file: File) => {
+  try {
+    const text = await file.text();
+    const lines = text.split('\n').filter(line => line.trim());
+    
+    if (lines.length < 2) {
+      toast.error('Arquivo CSV vazio ou inválido');
+      return;
+    }
+
+    const headers = lines[0].split(';').map(h => h.trim());
+    const data = lines.slice(1).map(line => {
+      const values = line.split(';').map(v => v.trim());
+      return headers.reduce((obj, header, index) => {
+        obj[header] = values[index] || '';
+        return obj;
+      }, {} as Record<string, string>);
+    });
+
+    switch (type) {
+      case 'empresas':
+        await importEmpresas(data);
+        break;
+      case 'usuarios':
+        await importUsuarios(data);
+        break;
+      case 'perfis':
+        await importPerfis(data);
+        break;
+      case 'roles':
+        await importRoles(data);
+        break;
+    }
+
+    toast.success(`${data.length} registro(s) importado(s) com sucesso!`);
+  } catch (error) {
+    console.error('Erro na importação:', error);
+    toast.error('Erro ao importar arquivo');
+  }
+};
+
+const importEmpresas = async (data: Record<string, string>[]) => {
+  for (const row of data) {
+    const { error } = await supabase
+      .from('empresas')
+      .insert({
+        nome: row.nome,
+        cnpj: row.cnpj,
+        razao_social: row.razao_social || null,
+        contato_email: row.contato_email || null,
+        contato_telefone: row.contato_telefone || null
+      });
+    
+    if (error) throw error;
+  }
+};
+
+const importUsuarios = async (data: Record<string, string>[]) => {
+  for (const row of data) {
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: row.email,
+      password: row.senha,
+      options: {
+        data: {
+          nome_completo: row.nome_completo
+        }
+      }
+    });
+
+    if (authError) throw authError;
+  }
+};
+
+const importPerfis = async (data: Record<string, string>[]) => {
+  for (const row of data) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', row.email)
+      .maybeSingle();
+
+    if (!profiles) {
+      console.warn(`Usuário não encontrado: ${row.email}`);
+      continue;
+    }
+
+    let empresaId = null;
+    if (row.empresa_cnpj) {
+      const { data: empresa } = await supabase
+        .from('empresas')
+        .select('id')
+        .eq('cnpj', row.empresa_cnpj)
+        .maybeSingle();
+      empresaId = empresa?.id;
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        telefone: row.telefone || null,
+        cargo: row.cargo || null,
+        empresa_id: empresaId
+      })
+      .eq('id', profiles.id);
+
+    if (error) throw error;
+  }
+};
+
+const importRoles = async (data: Record<string, string>[]) => {
+  for (const row of data) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', row.email)
+      .maybeSingle();
+
+    if (!profiles) {
+      console.warn(`Usuário não encontrado: ${row.email}`);
+      continue;
+    }
+
+    const { error } = await supabase
+      .from('user_roles')
+      .insert({
+        user_id: profiles.id,
+        role: row.role as any
+      });
+
+    if (error && error.code !== '23505') {
+      throw error;
+    }
+  }
 };
 
 export default function Configuracoes() {
@@ -140,8 +276,22 @@ export default function Configuracoes() {
                         <Download className="h-4 w-4" />
                         Baixar Template
                       </Button>
-                      <Input type="file" accept=".csv,.xlsx" className="flex-1" />
-                      <Button size="sm" className="gap-2">
+                      <Input 
+                        id="import-empresas"
+                        type="file" 
+                        accept=".csv" 
+                        className="flex-1"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleImport('empresas', file);
+                          e.target.value = '';
+                        }}
+                      />
+                      <Button 
+                        size="sm" 
+                        className="gap-2"
+                        onClick={() => document.getElementById('import-empresas')?.click()}
+                      >
                         <Upload className="h-4 w-4" />
                         Importar
                       </Button>
@@ -183,8 +333,22 @@ export default function Configuracoes() {
                         <Download className="h-4 w-4" />
                         Baixar Template
                       </Button>
-                      <Input type="file" accept=".csv,.xlsx" className="flex-1" />
-                      <Button size="sm" className="gap-2">
+                      <Input 
+                        id="import-usuarios"
+                        type="file" 
+                        accept=".csv" 
+                        className="flex-1"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleImport('usuarios', file);
+                          e.target.value = '';
+                        }}
+                      />
+                      <Button 
+                        size="sm" 
+                        className="gap-2"
+                        onClick={() => document.getElementById('import-usuarios')?.click()}
+                      >
                         <Upload className="h-4 w-4" />
                         Importar
                       </Button>
@@ -226,8 +390,22 @@ export default function Configuracoes() {
                         <Download className="h-4 w-4" />
                         Baixar Template
                       </Button>
-                      <Input type="file" accept=".csv,.xlsx" className="flex-1" />
-                      <Button size="sm" className="gap-2">
+                      <Input 
+                        id="import-perfis"
+                        type="file" 
+                        accept=".csv" 
+                        className="flex-1"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleImport('perfis', file);
+                          e.target.value = '';
+                        }}
+                      />
+                      <Button 
+                        size="sm" 
+                        className="gap-2"
+                        onClick={() => document.getElementById('import-perfis')?.click()}
+                      >
                         <Upload className="h-4 w-4" />
                         Importar
                       </Button>
@@ -271,8 +449,22 @@ export default function Configuracoes() {
                         <Download className="h-4 w-4" />
                         Baixar Template
                       </Button>
-                      <Input type="file" accept=".csv,.xlsx" className="flex-1" />
-                      <Button size="sm" className="gap-2">
+                      <Input 
+                        id="import-roles"
+                        type="file" 
+                        accept=".csv" 
+                        className="flex-1"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleImport('roles', file);
+                          e.target.value = '';
+                        }}
+                      />
+                      <Button 
+                        size="sm" 
+                        className="gap-2"
+                        onClick={() => document.getElementById('import-roles')?.click()}
+                      >
                         <Upload className="h-4 w-4" />
                         Importar
                       </Button>

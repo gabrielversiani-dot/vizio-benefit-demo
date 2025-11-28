@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Faturamento from "./pages/Faturamento";
 import Sinistralidade from "./pages/Sinistralidade";
 import SinistrosVida from "./pages/SinistrosVida";
+import Contratos from "./pages/Contratos";
 import Configuracoes from "./pages/Configuracoes";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -55,6 +56,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <SinistrosVida />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/contratos"
+                element={
+                  <ProtectedRoute>
+                    <Contratos />
                   </ProtectedRoute>
                 }
               />

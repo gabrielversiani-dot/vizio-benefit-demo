@@ -123,12 +123,15 @@ const importEmpresas = async (data: Record<string, string>[]) => {
   for (const row of data) {
     const { error } = await supabase
       .from('empresas')
-      .insert({
+      .upsert({
         nome: row.nome,
         cnpj: row.cnpj,
         razao_social: row.razao_social || null,
         contato_email: row.contato_email || null,
         contato_telefone: row.contato_telefone || null
+      }, {
+        onConflict: 'cnpj',
+        ignoreDuplicates: false
       });
     
     if (error) throw error;

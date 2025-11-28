@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./hooks/useAuth";
+import { EmpresaProvider } from "./contexts/EmpresaContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Faturamento from "./pages/Faturamento";
@@ -22,50 +23,52 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            <Route path="/auth" element={<Auth />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/faturamento"
-              element={
-                <ProtectedRoute>
-                  <Faturamento />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sinistralidade"
-              element={
-                <ProtectedRoute>
-                  <Sinistralidade />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sinistros-vida"
-              element={
-                <ProtectedRoute>
-                  <SinistrosVida />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/configuracoes"
-              element={
-                <ProtectedRoute>
-                  <Configuracoes />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <EmpresaProvider>
+            <Routes>
+              <Route path="/auth" element={<Auth />} />
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/faturamento"
+                element={
+                  <ProtectedRoute>
+                    <Faturamento />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sinistralidade"
+                element={
+                  <ProtectedRoute>
+                    <Sinistralidade />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sinistros-vida"
+                element={
+                  <ProtectedRoute>
+                    <SinistrosVida />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/configuracoes"
+                element={
+                  <ProtectedRoute>
+                    <Configuracoes />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </EmpresaProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

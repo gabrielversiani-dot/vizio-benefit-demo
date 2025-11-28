@@ -1,0 +1,308 @@
+import { AppLayout } from "@/components/Layout/AppLayout";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { 
+  FileText, 
+  Download, 
+  Upload, 
+  Settings, 
+  Bell, 
+  Users, 
+  Shield,
+  Plus,
+  Trash2,
+  Calendar
+} from "lucide-react";
+
+const mockReports = [
+  { id: 1, nome: "Relatório Mensal de Sinistralidade", tipo: "PDF", frequencia: "Mensal", ativo: true },
+  { id: 2, nome: "Análise de Faturamento Trimestral", tipo: "Excel", frequencia: "Trimestral", ativo: true },
+  { id: 3, nome: "Dashboard de Vidas Ativas", tipo: "PDF", frequencia: "Semanal", ativo: false },
+];
+
+export default function Configuracoes() {
+  return (
+    <AppLayout>
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-4xl font-bold tracking-tight">Configurações</h1>
+          <p className="mt-2 text-muted-foreground">
+            Gerencie as preferências e configurações da plataforma
+          </p>
+        </div>
+
+        {/* Seção de Relatórios - Destaque Principal */}
+        <Card className="border-2 border-primary/20">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <FileText className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <CardTitle>Relatórios Personalizados</CardTitle>
+                  <CardDescription>
+                    Configure e gerencie seus relatórios automatizados
+                  </CardDescription>
+                </div>
+              </div>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                Novo Relatório
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {mockReports.map((report) => (
+                <div
+                  key={report.id}
+                  className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center gap-4 flex-1">
+                    <div className="h-12 w-12 rounded-lg bg-success/10 flex items-center justify-center">
+                      <FileText className="h-6 w-6 text-success" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold">{report.nome}</p>
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                        <span className="flex items-center gap-1">
+                          <Download className="h-3.5 w-3.5" />
+                          {report.tipo}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {report.frequencia}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Switch checked={report.ativo} />
+                      <span className="text-sm text-muted-foreground">
+                        {report.ativo ? "Ativo" : "Inativo"}
+                      </span>
+                    </div>
+                    <Button variant="ghost" size="sm">
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm">
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+
+              <Separator className="my-6" />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="report-email">E-mail para envio automático</Label>
+                  <Input
+                    id="report-email"
+                    type="email"
+                    placeholder="financeiro@viziocapital.com.br"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="report-format">Formato padrão</Label>
+                  <select
+                    id="report-format"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="pdf">PDF</option>
+                    <option value="excel">Excel (XLSX)</option>
+                    <option value="csv">CSV</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <Button variant="outline">Cancelar</Button>
+                <Button>Salvar Configurações</Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Outras Configurações */}
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Notificações */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
+                  <Bell className="h-5 w-5 text-warning" />
+                </div>
+                <div>
+                  <CardTitle>Notificações</CardTitle>
+                  <CardDescription>Gerencie alertas e avisos</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Alertas de sinistralidade</p>
+                  <p className="text-sm text-muted-foreground">
+                    Receber alertas quando exceder limite
+                  </p>
+                </div>
+                <Switch defaultChecked />
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Faturas próximas ao vencimento</p>
+                  <p className="text-sm text-muted-foreground">
+                    Notificar 7 dias antes do vencimento
+                  </p>
+                </div>
+                <Switch defaultChecked />
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Novos beneficiários</p>
+                  <p className="text-sm text-muted-foreground">
+                    Alertar sobre novas inclusões
+                  </p>
+                </div>
+                <Switch />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Usuários e Permissões */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-chart-2/10 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-chart-2" />
+                </div>
+                <div>
+                  <CardTitle>Usuários e Acessos</CardTitle>
+                  <CardDescription>Gerencie permissões da equipe</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Adicionar novo usuário</Label>
+                <div className="flex gap-2">
+                  <Input placeholder="email@viziocapital.com.br" type="email" />
+                  <Button>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <div>
+                    <p className="font-medium">admin@viziocapital.com.br</p>
+                    <p className="text-muted-foreground">Administrador</p>
+                  </div>
+                  <Button variant="ghost" size="sm">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <div>
+                    <p className="font-medium">analista@viziocapital.com.br</p>
+                    <p className="text-muted-foreground">Analista</p>
+                  </div>
+                  <Button variant="ghost" size="sm">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Segurança */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+                  <Shield className="h-5 w-5 text-destructive" />
+                </div>
+                <div>
+                  <CardTitle>Segurança</CardTitle>
+                  <CardDescription>Configurações de segurança</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Autenticação em dois fatores</p>
+                  <p className="text-sm text-muted-foreground">
+                    Adicionar camada extra de segurança
+                  </p>
+                </div>
+                <Switch />
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Expiração de sessão</p>
+                  <p className="text-sm text-muted-foreground">
+                    Desconectar após 30 minutos
+                  </p>
+                </div>
+                <Switch defaultChecked />
+              </div>
+              <Separator />
+              <Button variant="outline" className="w-full">
+                Alterar Senha
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Importação/Exportação */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-chart-4/10 flex items-center justify-center">
+                  <Upload className="h-5 w-5 text-chart-4" />
+                </div>
+                <div>
+                  <CardTitle>Importação & Exportação</CardTitle>
+                  <CardDescription>Gerencie seus dados</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Importar beneficiários</Label>
+                <div className="flex gap-2">
+                  <Input type="file" accept=".csv,.xlsx" />
+                  <Button>
+                    <Upload className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Formatos aceitos: CSV, Excel
+                </p>
+              </div>
+              <Separator />
+              <div className="space-y-2">
+                <Label>Exportar dados completos</Label>
+                <Button variant="outline" className="w-full gap-2">
+                  <Download className="h-4 w-4" />
+                  Baixar backup completo
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </AppLayout>
+  );
+}

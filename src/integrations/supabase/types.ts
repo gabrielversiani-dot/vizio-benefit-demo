@@ -131,6 +131,69 @@ export type Database = {
         }
         Relationships: []
       }
+      movimentacoes_vidas: {
+        Row: {
+          aprovado_por: string | null
+          arquivo_nome: string
+          arquivo_url: string
+          categoria: Database["public"]["Enums"]["categoria_beneficio"]
+          created_at: string
+          criado_por: string
+          dados_json: Json | null
+          data_processamento: string | null
+          data_upload: string
+          empresa_id: string
+          id: string
+          motivo_rejeicao: string | null
+          observacoes: string | null
+          registros_processados: number
+          status: Database["public"]["Enums"]["status_movimentacao"]
+          tipo: Database["public"]["Enums"]["tipo_movimentacao"]
+          total_registros: number
+          updated_at: string
+        }
+        Insert: {
+          aprovado_por?: string | null
+          arquivo_nome: string
+          arquivo_url: string
+          categoria: Database["public"]["Enums"]["categoria_beneficio"]
+          created_at?: string
+          criado_por: string
+          dados_json?: Json | null
+          data_processamento?: string | null
+          data_upload?: string
+          empresa_id: string
+          id?: string
+          motivo_rejeicao?: string | null
+          observacoes?: string | null
+          registros_processados?: number
+          status?: Database["public"]["Enums"]["status_movimentacao"]
+          tipo: Database["public"]["Enums"]["tipo_movimentacao"]
+          total_registros?: number
+          updated_at?: string
+        }
+        Update: {
+          aprovado_por?: string | null
+          arquivo_nome?: string
+          arquivo_url?: string
+          categoria?: Database["public"]["Enums"]["categoria_beneficio"]
+          created_at?: string
+          criado_por?: string
+          dados_json?: Json | null
+          data_processamento?: string | null
+          data_upload?: string
+          empresa_id?: string
+          id?: string
+          motivo_rejeicao?: string | null
+          observacoes?: string | null
+          registros_processados?: number
+          status?: Database["public"]["Enums"]["status_movimentacao"]
+          tipo?: Database["public"]["Enums"]["tipo_movimentacao"]
+          total_registros?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           ativo: boolean
@@ -212,13 +275,20 @@ export type Database = {
     }
     Enums: {
       app_role: "admin_vizio" | "admin_empresa" | "rh_gestor" | "visualizador"
+      categoria_beneficio: "saude" | "vida" | "odonto"
       status_contrato:
         | "ativo"
         | "vencido"
         | "em_renovacao"
         | "suspenso"
         | "cancelado"
+      status_movimentacao: "pendente" | "aprovada" | "rejeitada" | "processada"
       tipo_documento_contrato: "contrato" | "aditivo" | "renovacao"
+      tipo_movimentacao:
+        | "inclusao"
+        | "exclusao"
+        | "alteracao_cadastral"
+        | "mudanca_plano"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -347,6 +417,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin_vizio", "admin_empresa", "rh_gestor", "visualizador"],
+      categoria_beneficio: ["saude", "vida", "odonto"],
       status_contrato: [
         "ativo",
         "vencido",
@@ -354,7 +425,14 @@ export const Constants = {
         "suspenso",
         "cancelado",
       ],
+      status_movimentacao: ["pendente", "aprovada", "rejeitada", "processada"],
       tipo_documento_contrato: ["contrato", "aditivo", "renovacao"],
+      tipo_movimentacao: [
+        "inclusao",
+        "exclusao",
+        "alteracao_cadastral",
+        "mudanca_plano",
+      ],
     },
   },
 } as const

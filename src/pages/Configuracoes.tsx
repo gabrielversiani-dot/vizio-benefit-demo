@@ -35,29 +35,29 @@ const downloadTemplate = (type: string) => {
   switch (type) {
     case "empresas":
       filename = "template_empresas.csv";
-      csvContent = "nome,cnpj,razao_social,contato_email,contato_telefone\n" +
-                   "Empresa Exemplo Ltda,12.345.678/0001-90,Empresa Exemplo LTDA,contato@exemplo.com.br,(11) 98765-4321\n" +
-                   "Outra Empresa S.A.,98.765.432/0001-10,Outra Empresa Sociedade Anônima,financeiro@outra.com.br,(21) 91234-5678";
+      csvContent = "nome;cnpj;razao_social;contato_email;contato_telefone\n" +
+                   "Empresa Exemplo Ltda;12.345.678/0001-90;Empresa Exemplo LTDA;contato@exemplo.com.br;(11) 98765-4321\n" +
+                   "Outra Empresa S.A.;98.765.432/0001-10;Outra Empresa Sociedade Anônima;financeiro@outra.com.br;(21) 91234-5678";
       break;
     case "usuarios":
       filename = "template_usuarios.csv";
-      csvContent = "email,senha,nome_completo\n" +
-                   "joao.silva@exemplo.com.br,SenhaSegura123!,João Silva\n" +
-                   "maria.santos@exemplo.com.br,OutraSenha456!,Maria Santos";
+      csvContent = "email;senha;nome_completo\n" +
+                   "joao.silva@exemplo.com.br;SenhaSegura123!;João Silva\n" +
+                   "maria.santos@exemplo.com.br;OutraSenha456!;Maria Santos";
       break;
     case "perfis":
       filename = "template_perfis.csv";
-      csvContent = "email,empresa_cnpj,cargo,telefone\n" +
-                   "joao.silva@exemplo.com.br,12.345.678/0001-90,Gerente de RH,(11) 99887-6655\n" +
-                   "maria.santos@exemplo.com.br,98.765.432/0001-10,Analista Financeiro,(21) 98876-5544";
+      csvContent = "email;empresa_cnpj;cargo;telefone\n" +
+                   "joao.silva@exemplo.com.br;12.345.678/0001-90;Gerente de RH;(11) 99887-6655\n" +
+                   "maria.santos@exemplo.com.br;98.765.432/0001-10;Analista Financeiro;(21) 98876-5544";
       break;
     case "roles":
       filename = "template_roles.csv";
-      csvContent = "email,role\n" +
-                   "admin@exemplo.com.br,admin_vizio\n" +
-                   "gestor@exemplo.com.br,admin_empresa\n" +
-                   "rh@exemplo.com.br,rh_gestor\n" +
-                   "usuario@exemplo.com.br,visualizador";
+      csvContent = "email;role\n" +
+                   "admin@exemplo.com.br;admin_vizio\n" +
+                   "gestor@exemplo.com.br;admin_empresa\n" +
+                   "rh@exemplo.com.br;rh_gestor\n" +
+                   "usuario@exemplo.com.br;visualizador";
       break;
     default:
       return;
@@ -123,10 +123,10 @@ export default function Configuracoes() {
                       <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50 border border-border">
                         <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                         <div className="text-xs text-muted-foreground space-y-1">
-                          <p className="font-medium">Formato do arquivo CSV:</p>
-                          <p className="font-mono">nome, cnpj, razao_social, contato_email, contato_telefone</p>
+                          <p className="font-medium">Formato do arquivo CSV (separador: ponto e vírgula):</p>
+                          <p className="font-mono">nome; cnpj; razao_social; contato_email; contato_telefone</p>
                           <p className="mt-2">Exemplo:</p>
-                          <p className="font-mono text-xs">Empresa XYZ Ltda, 12.345.678/0001-90, Empresa XYZ LTDA, contato@xyz.com, (11) 98765-4321</p>
+                          <p className="font-mono text-xs">Empresa XYZ Ltda; 12.345.678/0001-90; Empresa XYZ LTDA; contato@xyz.com; (11) 98765-4321</p>
                         </div>
                       </div>
                     </div>
@@ -166,10 +166,10 @@ export default function Configuracoes() {
                       <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50 border border-border">
                         <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                         <div className="text-xs text-muted-foreground space-y-1">
-                          <p className="font-medium">Formato do arquivo CSV:</p>
-                          <p className="font-mono">email, senha, nome_completo</p>
+                          <p className="font-medium">Formato do arquivo CSV (separador: ponto e vírgula):</p>
+                          <p className="font-mono">email; senha; nome_completo</p>
                           <p className="mt-2">Exemplo:</p>
-                          <p className="font-mono text-xs">joao.silva@empresa.com, SenhaSegura123!, João Silva</p>
+                          <p className="font-mono text-xs">joao.silva@empresa.com; SenhaSegura123!; João Silva</p>
                         </div>
                       </div>
                     </div>
@@ -209,10 +209,10 @@ export default function Configuracoes() {
                       <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50 border border-border">
                         <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                         <div className="text-xs text-muted-foreground space-y-1">
-                          <p className="font-medium">Formato do arquivo CSV:</p>
-                          <p className="font-mono">email, empresa_cnpj, cargo, telefone</p>
+                          <p className="font-medium">Formato do arquivo CSV (separador: ponto e vírgula):</p>
+                          <p className="font-mono">email; empresa_cnpj; cargo; telefone</p>
                           <p className="mt-2">Exemplo:</p>
-                          <p className="font-mono text-xs">joao.silva@empresa.com, 12.345.678/0001-90, Gerente RH, (11) 99887-6655</p>
+                          <p className="font-mono text-xs">joao.silva@empresa.com; 12.345.678/0001-90; Gerente RH; (11) 99887-6655</p>
                         </div>
                       </div>
                     </div>
@@ -252,12 +252,12 @@ export default function Configuracoes() {
                       <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50 border border-border">
                         <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                         <div className="text-xs text-muted-foreground space-y-1">
-                          <p className="font-medium">Formato do arquivo CSV:</p>
-                          <p className="font-mono">email, role</p>
+                          <p className="font-medium">Formato do arquivo CSV (separador: ponto e vírgula):</p>
+                          <p className="font-mono">email; role</p>
                           <p className="mt-2">Roles disponíveis:</p>
                           <p className="font-mono text-xs">admin_vizio | admin_empresa | rh_gestor | visualizador</p>
                           <p className="mt-2">Exemplo:</p>
-                          <p className="font-mono text-xs">admin@vizio.com, admin_vizio</p>
+                          <p className="font-mono text-xs">admin@vizio.com; admin_vizio</p>
                         </div>
                       </div>
                     </div>

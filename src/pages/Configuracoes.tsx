@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,10 +18,27 @@ import {
   Plus,
   Trash2,
   Calendar,
-  Info
+  Info,
+  Eye
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 const mockReports = [
   { id: 1, nome: "Relatório Mensal de Sinistralidade", tipo: "PDF", frequencia: "Mensal", ativo: true },
@@ -78,14 +96,14 @@ const downloadTemplate = (type: string) => {
   toast.success(`Template ${filename} baixado com sucesso!`);
 };
 
-const handleImport = async (type: string, file: File) => {
+const parseCSV = async (file: File): Promise<{ headers: string[], data: Record<string, string>[] } | null> => {
   try {
     const text = await file.text();
     const lines = text.split('\n').filter(line => line.trim());
     
     if (lines.length < 2) {
       toast.error('Arquivo CSV vazio ou inválido');
-      return;
+      return null;
     }
 
     const headers = lines[0].split(';').map(h => h.trim());
@@ -97,6 +115,16 @@ const handleImport = async (type: string, file: File) => {
       }, {} as Record<string, string>);
     });
 
+    return { headers, data };
+  } catch (error) {
+    console.error('Erro ao ler arquivo:', error);
+    toast.error('Erro ao ler arquivo CSV');
+    return null;
+  }
+};
+
+const handleImport = async (type: string, data: Record<string, string>[]) => {
+  try {
     switch (type) {
       case 'empresas':
         await importEmpresas(data);
@@ -217,6 +245,29 @@ const importRoles = async (data: Record<string, string>[]) => {
 };
 
 export default function Configuracoes() {
+  const [previewData, setPreviewData] = useState<{
+    type: string;
+    headers: string[];
+    data: Record<string, string>[];
+  } | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  const handleFileSelect = async (type: string, file: File) => {
+    const parsed = await parseCSV(file);
+    if (parsed) {
+      setPreviewData({ type, ...parsed });
+      setIsPreviewOpen(true);
+    }
+  };
+
+  const confirmImport = async () => {
+    if (previewData) {
+      await handleImport(previewData.type, previewData.data);
+      setIsPreviewOpen(false);
+      setPreviewData(null);
+    }
+  };
+
   return (
     <AppLayout>
       <div className="space-y-8">
@@ -286,7 +337,7 @@ export default function Configuracoes() {
                         className="flex-1"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) handleImport('empresas', file);
+                          if (file) handleFileSelect('empresas', file);
                           e.target.value = '';
                         }}
                       />
@@ -343,7 +394,7 @@ export default function Configuracoes() {
                         className="flex-1"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) handleImport('usuarios', file);
+                          if (file) handleFileSelect('usuarios', file);
                           e.target.value = '';
                         }}
                       />
@@ -400,7 +451,7 @@ export default function Configuracoes() {
                         className="flex-1"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) handleImport('perfis', file);
+                          if (file) handleFileSelect('perfis', file);
                           e.target.value = '';
                         }}
                       />
@@ -459,7 +510,7 @@ export default function Configuracoes() {
                         className="flex-1"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) handleImport('roles', file);
+                          if (file) handleFileSelect('roles', file);
                           e.target.value = '';
                         }}
                       />
@@ -762,6 +813,55 @@ export default function Configuracoes() {
           </Card>
         </div>
       </div>
+
+      {/* Modal de Preview */}
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Preview dos Dados - {previewData?.type}
+            </DialogTitle>
+            <DialogDescription>
+              Revise os dados antes de importar. Total de {previewData?.data.length} registro(s).
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-auto border rounded-md">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {previewData?.headers.map((header) => (
+                    <TableHead key={header} className="font-bold">
+                      {header}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {previewData?.data.map((row, index) => (
+                  <TableRow key={index}>
+                    {previewData.headers.map((header) => (
+                      <TableCell key={header}>
+                        {row[header] || '-'}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmImport}>
+              Confirmar Importação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

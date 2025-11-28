@@ -41,56 +41,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-const mockSinistros = [
-  {
-    id: "SVG-2024-001",
-    beneficiario: "Carlos Alberto Santos",
-    cpf: "123.456.789-00",
-    empresa: "Empresa Alpha Ltda",
-    evento: "Morte Natural",
-    dataEvento: "2024-11-15",
-    dataAbertura: "2024-11-16",
-    valorSegurado: 150000,
-    status: "aprovado",
-    documentos: "completo",
-  },
-  {
-    id: "SVG-2024-002",
-    beneficiario: "Maria Fernanda Costa",
-    cpf: "987.654.321-00",
-    empresa: "Beta Tecnologia S.A.",
-    evento: "Morte Acidental",
-    dataEvento: "2024-11-20",
-    dataAbertura: "2024-11-21",
-    valorSegurado: 200000,
-    status: "em_analise",
-    documentos: "parcial",
-  },
-  {
-    id: "SVG-2024-003",
-    beneficiario: "João Pedro Oliveira",
-    cpf: "456.789.123-00",
-    empresa: "Gamma Indústria",
-    evento: "Invalidez Permanente",
-    dataEvento: "2024-11-18",
-    dataAbertura: "2024-11-19",
-    valorSegurado: 100000,
-    status: "aguardando_docs",
-    documentos: "pendente",
-  },
-  {
-    id: "SVG-2024-004",
-    beneficiario: "Ana Paula Silva",
-    cpf: "321.654.987-00",
-    empresa: "Delta Comércio",
-    evento: "Morte Natural",
-    dataEvento: "2024-11-10",
-    dataAbertura: "2024-11-11",
-    valorSegurado: 180000,
-    status: "em_pagamento",
-    documentos: "completo",
-  },
-];
+// Dados reais virão do banco de dados
+const sinistros: any[] = [];
 
 const statusConfig = {
   aprovado: { label: "Aprovado", color: "bg-success text-success-foreground" },
@@ -110,13 +62,13 @@ export default function SinistrosVida() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const totalSinistros = mockSinistros.length;
-  const valorTotal = mockSinistros.reduce((acc, s) => acc + s.valorSegurado, 0);
-  const valorMedio = valorTotal / totalSinistros;
-  const aprovados = mockSinistros.filter(s => s.status === "aprovado").length;
-  const taxaAprovacao = (aprovados / totalSinistros) * 100;
+  const totalSinistros = sinistros.length;
+  const valorTotal = sinistros.reduce((acc, s) => acc + s.valorSegurado, 0);
+  const valorMedio = totalSinistros > 0 ? valorTotal / totalSinistros : 0;
+  const aprovados = sinistros.filter(s => s.status === "aprovado").length;
+  const taxaAprovacao = totalSinistros > 0 ? (aprovados / totalSinistros) * 100 : 0;
 
-  const filteredSinistros = mockSinistros.filter(
+  const filteredSinistros = sinistros.filter(
     (sinistro) =>
       sinistro.beneficiario.toLowerCase().includes(searchTerm.toLowerCase()) ||
       sinistro.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -287,66 +239,72 @@ export default function SinistrosVida() {
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Beneficiário</TableHead>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead>Evento</TableHead>
-                  <TableHead>Data Evento</TableHead>
-                  <TableHead>Valor Segurado</TableHead>
-                  <TableHead>Documentos</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredSinistros.map((sinistro) => {
-                  const statusConf = statusConfig[sinistro.status as keyof typeof statusConfig];
-                  const docsConf = documentosConfig[sinistro.documentos as keyof typeof documentosConfig];
-                  
-                  return (
-                    <TableRow key={sinistro.id}>
-                      <TableCell className="font-medium">{sinistro.id}</TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{sinistro.beneficiario}</p>
-                          <p className="text-sm text-muted-foreground">{sinistro.cpf}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>{sinistro.empresa}</TableCell>
-                      <TableCell>{sinistro.evento}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          {new Date(sinistro.dataEvento).toLocaleDateString('pt-BR')}
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-semibold">
-                        R$ {sinistro.valorSegurado.toLocaleString('pt-BR')}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className={docsConf.color}>
-                          {docsConf.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={statusConf.color}>
-                          {statusConf.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" className="gap-2">
-                          <FileText className="h-4 w-4" />
-                          Ver Detalhes
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            {filteredSinistros.length === 0 ? (
+              <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+                {searchTerm ? "Nenhum resultado encontrado" : "Nenhum sinistro cadastrado"}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Beneficiário</TableHead>
+                    <TableHead>Empresa</TableHead>
+                    <TableHead>Evento</TableHead>
+                    <TableHead>Data Evento</TableHead>
+                    <TableHead>Valor Segurado</TableHead>
+                    <TableHead>Documentos</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredSinistros.map((sinistro) => {
+                    const statusConf = statusConfig[sinistro.status as keyof typeof statusConfig];
+                    const docsConf = documentosConfig[sinistro.documentos as keyof typeof documentosConfig];
+                    
+                    return (
+                      <TableRow key={sinistro.id}>
+                        <TableCell className="font-medium">{sinistro.id}</TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{sinistro.beneficiario}</p>
+                            <p className="text-sm text-muted-foreground">{sinistro.cpf}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>{sinistro.empresa}</TableCell>
+                        <TableCell>{sinistro.evento}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            {new Date(sinistro.dataEvento).toLocaleDateString('pt-BR')}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          R$ {sinistro.valorSegurado.toLocaleString('pt-BR')}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className={docsConf.color}>
+                            {docsConf.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={statusConf.color}>
+                            {statusConf.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" className="gap-2">
+                            <FileText className="h-4 w-4" />
+                            Ver Detalhes
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

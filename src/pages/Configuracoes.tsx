@@ -35,8 +35,145 @@ export default function Configuracoes() {
           </p>
         </div>
 
-        {/* Seção de Relatórios - Destaque Principal */}
-        <Card className="border-2 border-primary/20">
+        {/* Seção de Importação Inicial - DESTAQUE */}
+        <Card className="border-2 border-warning/30 bg-warning/5">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-lg bg-warning/20 flex items-center justify-center">
+                <Upload className="h-6 w-6 text-warning" />
+              </div>
+              <div className="flex-1">
+                <CardTitle className="text-xl">Importação Inicial de Dados</CardTitle>
+                <CardDescription>
+                  Configure o sistema importando dados na ordem correta
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              <div className="grid gap-4">
+                {/* Passo 1: Empresas */}
+                <div className="flex items-start gap-4 p-4 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
+                    1
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <div>
+                      <h3 className="font-semibold">Empresas</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Comece importando as empresas (tabela <code className="text-xs bg-muted px-1 py-0.5 rounded">empresas</code>)
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Campos: nome, cnpj, razao_social, contato_email, contato_telefone
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input type="file" accept=".csv,.xlsx" className="flex-1" />
+                      <Button size="sm" className="gap-2">
+                        <Upload className="h-4 w-4" />
+                        Importar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Passo 2: Usuários no Auth */}
+                <div className="flex items-start gap-4 p-4 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
+                    2
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <div>
+                      <h3 className="font-semibold">Usuários (Autenticação)</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Criar usuários através do sistema de autenticação
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Isso criará automaticamente os perfis via trigger
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input type="file" accept=".csv,.xlsx" className="flex-1" />
+                      <Button size="sm" className="gap-2">
+                        <Upload className="h-4 w-4" />
+                        Importar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Passo 3: Perfis */}
+                <div className="flex items-start gap-4 p-4 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
+                    3
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <div>
+                      <h3 className="font-semibold">Perfis (Atualização)</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Atualizar perfis com empresa_id, cargo, telefone (tabela <code className="text-xs bg-muted px-1 py-0.5 rounded">profiles</code>)
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Vincular cada usuário à sua empresa
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input type="file" accept=".csv,.xlsx" className="flex-1" />
+                      <Button size="sm" className="gap-2">
+                        <Upload className="h-4 w-4" />
+                        Importar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Passo 4: Roles */}
+                <div className="flex items-start gap-4 p-4 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
+                    4
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <div>
+                      <h3 className="font-semibold">Funções/Roles</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Atribuir roles aos usuários (tabela <code className="text-xs bg-muted px-1 py-0.5 rounded">user_roles</code>)
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Roles: admin_vizio, admin_empresa, rh_gestor, visualizador
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input type="file" accept=".csv,.xlsx" className="flex-1" />
+                      <Button size="sm" className="gap-2">
+                        <Upload className="h-4 w-4" />
+                        Importar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                <div className="flex items-center gap-3">
+                  <Shield className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium">Usuário Admin Atual</p>
+                    <p className="text-xs text-muted-foreground">gabriel.versiani@capitalvizio.com.br</p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm">
+                  Atribuir Role Admin
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Seção de Relatórios */}
+        <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">

@@ -14,6 +14,87 @@ export type Database = {
   }
   public: {
     Tables: {
+      contratos: {
+        Row: {
+          arquivo_nome: string
+          arquivo_url: string
+          assinado: boolean
+          contrato_pai_id: string | null
+          created_at: string
+          criado_por: string
+          data_assinatura: string | null
+          data_fim: string
+          data_inicio: string
+          empresa_id: string
+          id: string
+          numero_contrato: string | null
+          observacoes: string | null
+          status: Database["public"]["Enums"]["status_contrato"]
+          tipo: Database["public"]["Enums"]["tipo_documento_contrato"]
+          titulo: string
+          updated_at: string
+          valor_mensal: number | null
+          versao: number
+        }
+        Insert: {
+          arquivo_nome: string
+          arquivo_url: string
+          assinado?: boolean
+          contrato_pai_id?: string | null
+          created_at?: string
+          criado_por: string
+          data_assinatura?: string | null
+          data_fim: string
+          data_inicio: string
+          empresa_id: string
+          id?: string
+          numero_contrato?: string | null
+          observacoes?: string | null
+          status?: Database["public"]["Enums"]["status_contrato"]
+          tipo?: Database["public"]["Enums"]["tipo_documento_contrato"]
+          titulo: string
+          updated_at?: string
+          valor_mensal?: number | null
+          versao?: number
+        }
+        Update: {
+          arquivo_nome?: string
+          arquivo_url?: string
+          assinado?: boolean
+          contrato_pai_id?: string | null
+          created_at?: string
+          criado_por?: string
+          data_assinatura?: string | null
+          data_fim?: string
+          data_inicio?: string
+          empresa_id?: string
+          id?: string
+          numero_contrato?: string | null
+          observacoes?: string | null
+          status?: Database["public"]["Enums"]["status_contrato"]
+          tipo?: Database["public"]["Enums"]["tipo_documento_contrato"]
+          titulo?: string
+          updated_at?: string
+          valor_mensal?: number | null
+          versao?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contratos_contrato_pai_id_fkey"
+            columns: ["contrato_pai_id"]
+            isOneToOne: false
+            referencedRelation: "contratos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contratos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empresas: {
         Row: {
           ativo: boolean
@@ -131,6 +212,13 @@ export type Database = {
     }
     Enums: {
       app_role: "admin_vizio" | "admin_empresa" | "rh_gestor" | "visualizador"
+      status_contrato:
+        | "ativo"
+        | "vencido"
+        | "em_renovacao"
+        | "suspenso"
+        | "cancelado"
+      tipo_documento_contrato: "contrato" | "aditivo" | "renovacao"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -259,6 +347,14 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin_vizio", "admin_empresa", "rh_gestor", "visualizador"],
+      status_contrato: [
+        "ativo",
+        "vencido",
+        "em_renovacao",
+        "suspenso",
+        "cancelado",
+      ],
+      tipo_documento_contrato: ["contrato", "aditivo", "renovacao"],
     },
   },
 } as const

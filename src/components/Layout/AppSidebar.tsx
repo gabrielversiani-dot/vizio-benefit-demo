@@ -1,4 +1,4 @@
-import { LayoutDashboard, DollarSign, Activity, Users, FileText, Settings, Shield } from "lucide-react";
+import { LayoutDashboard, DollarSign, Activity, Users, FileText, Settings, Shield, FileSignature } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -15,6 +15,7 @@ const menuItems = [
   { icon: DollarSign, label: "Faturamento", href: "/faturamento" },
   { icon: Activity, label: "Sinistralidade", href: "/sinistralidade" },
   { icon: Shield, label: "Sinistros Vida", href: "/sinistros-vida" },
+  { icon: FileSignature, label: "Contratos", href: "/contratos" },
   { icon: Users, label: "Beneficiários", href: "/beneficiarios" },
   { icon: FileText, label: "Relatórios", href: "/relatorios" },
 ];

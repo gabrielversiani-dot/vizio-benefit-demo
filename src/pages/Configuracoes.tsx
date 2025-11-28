@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,8 @@ import {
   Trash2,
   Calendar,
   Info,
-  Eye
+  Eye,
+  LogOut
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -141,9 +143,19 @@ const handleImport = async (type: string, data: Record<string, string>[]) => {
     }
 
     toast.success(`${data.length} registro(s) importado(s) com sucesso!`);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erro na importação:', error);
-    toast.error('Erro ao importar arquivo');
+    
+    // Mensagens de erro específicas
+    if (error.message?.includes('row-level security policy')) {
+      toast.error('Sem permissão para importar. Faça logout e login novamente.');
+    } else if (error.code === '23505') {
+      toast.error('Já existe um registro com este CNPJ. Use a opção de atualizar.');
+    } else if (error.message) {
+      toast.error(`Erro: ${error.message}`);
+    } else {
+      toast.error('Erro ao importar arquivo');
+    }
   }
 };
 
@@ -245,6 +257,7 @@ const importRoles = async (data: Record<string, string>[]) => {
 };
 
 export default function Configuracoes() {
+  const { signOut } = useAuth();
   const [previewData, setPreviewData] = useState<{
     type: string;
     headers: string[];
@@ -268,14 +281,24 @@ export default function Configuracoes() {
     }
   };
 
+  const handleLogout = async () => {
+    await signOut();
+  };
+
   return (
     <AppLayout>
       <div className="space-y-8">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight">Configurações</h1>
-          <p className="mt-2 text-muted-foreground">
-            Gerencie as preferências e configurações da plataforma
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold tracking-tight">Configurações</h1>
+            <p className="mt-2 text-muted-foreground">
+              Gerencie as preferências e configurações da plataforma
+            </p>
+          </div>
+          <Button variant="outline" onClick={handleLogout} className="gap-2">
+            <LogOut className="h-4 w-4" />
+            Sair
+          </Button>
         </div>
 
         {/* Seção de Importação Inicial - DESTAQUE */}

@@ -21,7 +21,8 @@ import {
   Calendar,
   Info,
   Eye,
-  LogOut
+  LogOut,
+  AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,6 +34,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -257,13 +268,14 @@ const importRoles = async (data: Record<string, string>[]) => {
 };
 
 export default function Configuracoes() {
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const [previewData, setPreviewData] = useState<{
     type: string;
     headers: string[];
     data: Record<string, string>[];
   } | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleFileSelect = async (type: string, file: File) => {
     const parsed = await parseCSV(file);
@@ -283,6 +295,41 @@ export default function Configuracoes() {
 
   const handleLogout = async () => {
     await signOut();
+  };
+
+  const clearAllData = async () => {
+    try {
+      // Deletar na ordem correta devido às foreign keys
+      // 1. user_roles (depende de profiles)
+      const { error: rolesError } = await supabase
+        .from('user_roles')
+        .delete()
+        .neq('user_id', user?.id); // Preserva o role do usuário atual
+
+      if (rolesError) throw rolesError;
+
+      // 2. profiles (depende de empresas)
+      const { error: profilesError } = await supabase
+        .from('profiles')
+        .delete()
+        .neq('id', user?.id); // Preserva o perfil do usuário atual
+
+      if (profilesError) throw profilesError;
+
+      // 3. empresas
+      const { error: empresasError } = await supabase
+        .from('empresas')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Deleta todas
+
+      if (empresasError) throw empresasError;
+
+      toast.success('Todos os dados foram apagados com sucesso!');
+      setShowDeleteConfirm(false);
+    } catch (error: any) {
+      console.error('Erro ao apagar dados:', error);
+      toast.error(`Erro: ${error.message || 'Não foi possível apagar os dados'}`);
+    }
   };
 
   return (
@@ -834,6 +881,37 @@ export default function Configuracoes() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Zona de Perigo */}
+          <Card className="border-destructive">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                </div>
+                <div>
+                  <CardTitle className="text-destructive">Zona de Perigo</CardTitle>
+                  <CardDescription>Ações irreversíveis</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Limpar todos os dados</Label>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Remove todas as empresas, perfis e roles (exceto seu usuário atual). Esta ação não pode ser desfeita.
+                </p>
+                <Button 
+                  variant="destructive" 
+                  className="w-full gap-2"
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Apagar Todos os Dados
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
@@ -885,6 +963,38 @@ export default function Configuracoes() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmação de Apagar Dados */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Tem certeza absoluta?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p className="font-semibold">Esta ação irá APAGAR PERMANENTEMENTE:</p>
+              <ul className="list-disc list-inside space-y-1 ml-2">
+                <li>Todas as empresas cadastradas</li>
+                <li>Todos os perfis de usuários (exceto o seu)</li>
+                <li>Todas as atribuições de roles (exceto a sua)</li>
+              </ul>
+              <p className="text-destructive font-semibold mt-3">
+                Esta ação NÃO PODE ser desfeita!
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={clearAllData}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Sim, apagar tudo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }

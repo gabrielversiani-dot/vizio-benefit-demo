@@ -14,6 +14,7 @@ import Contratos from "./pages/Contratos";
 import Beneficiarios from "./pages/Beneficiarios";
 import Relatorios from "./pages/Relatorios";
 import MovimentacaoVidas from "./pages/MovimentacaoVidas";
+import Demandas from "./pages/Demandas";
 import Configuracoes from "./pages/Configuracoes";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -91,6 +92,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <MovimentacaoVidas />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/demandas"
+                element={
+                  <ProtectedRoute>
+                    <Demandas />
                   </ProtectedRoute>
                 }
               />

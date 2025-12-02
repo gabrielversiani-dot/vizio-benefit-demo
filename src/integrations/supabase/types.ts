@@ -14,6 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      acoes_saude: {
+        Row: {
+          capacidade_maxima: number | null
+          categoria: Database["public"]["Enums"]["categoria_acao_saude"]
+          created_at: string
+          criado_por: string
+          data_fim: string | null
+          data_inicio: string
+          descricao: string | null
+          empresa_id: string | null
+          id: string
+          local: string | null
+          material_nome: string | null
+          material_url: string | null
+          observacoes: string | null
+          status: Database["public"]["Enums"]["status_acao_saude"]
+          tipo: Database["public"]["Enums"]["tipo_acao_saude"]
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          capacidade_maxima?: number | null
+          categoria: Database["public"]["Enums"]["categoria_acao_saude"]
+          created_at?: string
+          criado_por: string
+          data_fim?: string | null
+          data_inicio: string
+          descricao?: string | null
+          empresa_id?: string | null
+          id?: string
+          local?: string | null
+          material_nome?: string | null
+          material_url?: string | null
+          observacoes?: string | null
+          status?: Database["public"]["Enums"]["status_acao_saude"]
+          tipo: Database["public"]["Enums"]["tipo_acao_saude"]
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          capacidade_maxima?: number | null
+          categoria?: Database["public"]["Enums"]["categoria_acao_saude"]
+          created_at?: string
+          criado_por?: string
+          data_fim?: string | null
+          data_inicio?: string
+          descricao?: string | null
+          empresa_id?: string | null
+          id?: string
+          local?: string | null
+          material_nome?: string | null
+          material_url?: string | null
+          observacoes?: string | null
+          status?: Database["public"]["Enums"]["status_acao_saude"]
+          tipo?: Database["public"]["Enums"]["tipo_acao_saude"]
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "acoes_saude_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contratos: {
         Row: {
           arquivo_nome: string
@@ -228,6 +296,60 @@ export type Database = {
         }
         Relationships: []
       }
+      indicadores_saude: {
+        Row: {
+          acao_id: string
+          created_at: string
+          criado_por: string
+          empresa_id: string
+          id: string
+          observacoes: string | null
+          taxa_adesao: number | null
+          total_convidados: number
+          total_participantes: number
+          updated_at: string
+        }
+        Insert: {
+          acao_id: string
+          created_at?: string
+          criado_por: string
+          empresa_id: string
+          id?: string
+          observacoes?: string | null
+          taxa_adesao?: number | null
+          total_convidados?: number
+          total_participantes?: number
+          updated_at?: string
+        }
+        Update: {
+          acao_id?: string
+          created_at?: string
+          criado_por?: string
+          empresa_id?: string
+          id?: string
+          observacoes?: string | null
+          taxa_adesao?: number | null
+          total_convidados?: number
+          total_participantes?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "indicadores_saude_acao_id_fkey"
+            columns: ["acao_id"]
+            isOneToOne: false
+            referencedRelation: "acoes_saude"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "indicadores_saude_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       movimentacoes_vidas: {
         Row: {
           aprovado_por: string | null
@@ -372,8 +494,22 @@ export type Database = {
     }
     Enums: {
       app_role: "admin_vizio" | "admin_empresa" | "rh_gestor" | "visualizador"
+      categoria_acao_saude:
+        | "vacinacao"
+        | "checkup"
+        | "bem_estar"
+        | "nutricional"
+        | "atividade_fisica"
+        | "saude_mental"
+        | "prevencao"
+        | "outro"
       categoria_beneficio: "saude" | "vida" | "odonto"
       prioridade_demanda: "baixa" | "media" | "alta" | "urgente"
+      status_acao_saude:
+        | "planejada"
+        | "em_andamento"
+        | "concluida"
+        | "cancelada"
       status_contrato:
         | "ativo"
         | "vencido"
@@ -387,6 +523,7 @@ export type Database = {
         | "concluido"
         | "cancelado"
       status_movimentacao: "pendente" | "aprovada" | "rejeitada" | "processada"
+      tipo_acao_saude: "campanha" | "programa" | "evento" | "treinamento"
       tipo_demanda:
         | "certificado"
         | "carteirinha"
@@ -529,8 +666,24 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin_vizio", "admin_empresa", "rh_gestor", "visualizador"],
+      categoria_acao_saude: [
+        "vacinacao",
+        "checkup",
+        "bem_estar",
+        "nutricional",
+        "atividade_fisica",
+        "saude_mental",
+        "prevencao",
+        "outro",
+      ],
       categoria_beneficio: ["saude", "vida", "odonto"],
       prioridade_demanda: ["baixa", "media", "alta", "urgente"],
+      status_acao_saude: [
+        "planejada",
+        "em_andamento",
+        "concluida",
+        "cancelada",
+      ],
       status_contrato: [
         "ativo",
         "vencido",
@@ -546,6 +699,7 @@ export const Constants = {
         "cancelado",
       ],
       status_movimentacao: ["pendente", "aprovada", "rejeitada", "processada"],
+      tipo_acao_saude: ["campanha", "programa", "evento", "treinamento"],
       tipo_demanda: [
         "certificado",
         "carteirinha",

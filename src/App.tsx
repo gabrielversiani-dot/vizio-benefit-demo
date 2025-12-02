@@ -15,6 +15,7 @@ import Beneficiarios from "./pages/Beneficiarios";
 import Relatorios from "./pages/Relatorios";
 import MovimentacaoVidas from "./pages/MovimentacaoVidas";
 import Demandas from "./pages/Demandas";
+import PromocaoSaude from "./pages/PromocaoSaude";
 import Configuracoes from "./pages/Configuracoes";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -100,6 +101,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <Demandas />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/promocao-saude"
+                element={
+                  <ProtectedRoute>
+                    <PromocaoSaude />
                   </ProtectedRoute>
                 }
               />

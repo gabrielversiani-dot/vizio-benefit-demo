@@ -95,6 +95,103 @@ export type Database = {
           },
         ]
       }
+      demandas: {
+        Row: {
+          arquivo_nome: string | null
+          arquivo_url: string | null
+          created_at: string
+          criado_por: string
+          descricao: string | null
+          empresa_id: string
+          id: string
+          prazo: string | null
+          prioridade: Database["public"]["Enums"]["prioridade_demanda"]
+          responsavel_id: string | null
+          status: Database["public"]["Enums"]["status_demanda"]
+          tipo: Database["public"]["Enums"]["tipo_demanda"]
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          arquivo_nome?: string | null
+          arquivo_url?: string | null
+          created_at?: string
+          criado_por: string
+          descricao?: string | null
+          empresa_id: string
+          id?: string
+          prazo?: string | null
+          prioridade?: Database["public"]["Enums"]["prioridade_demanda"]
+          responsavel_id?: string | null
+          status?: Database["public"]["Enums"]["status_demanda"]
+          tipo: Database["public"]["Enums"]["tipo_demanda"]
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          arquivo_nome?: string | null
+          arquivo_url?: string | null
+          created_at?: string
+          criado_por?: string
+          descricao?: string | null
+          empresa_id?: string
+          id?: string
+          prazo?: string | null
+          prioridade?: Database["public"]["Enums"]["prioridade_demanda"]
+          responsavel_id?: string | null
+          status?: Database["public"]["Enums"]["status_demanda"]
+          tipo?: Database["public"]["Enums"]["tipo_demanda"]
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demandas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      demandas_historico: {
+        Row: {
+          comentario: string | null
+          created_at: string
+          criado_por: string
+          demanda_id: string
+          id: string
+          status_anterior: Database["public"]["Enums"]["status_demanda"] | null
+          status_novo: Database["public"]["Enums"]["status_demanda"] | null
+        }
+        Insert: {
+          comentario?: string | null
+          created_at?: string
+          criado_por: string
+          demanda_id: string
+          id?: string
+          status_anterior?: Database["public"]["Enums"]["status_demanda"] | null
+          status_novo?: Database["public"]["Enums"]["status_demanda"] | null
+        }
+        Update: {
+          comentario?: string | null
+          created_at?: string
+          criado_por?: string
+          demanda_id?: string
+          id?: string
+          status_anterior?: Database["public"]["Enums"]["status_demanda"] | null
+          status_novo?: Database["public"]["Enums"]["status_demanda"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demandas_historico_demanda_id_fkey"
+            columns: ["demanda_id"]
+            isOneToOne: false
+            referencedRelation: "demandas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empresas: {
         Row: {
           ativo: boolean
@@ -276,13 +373,28 @@ export type Database = {
     Enums: {
       app_role: "admin_vizio" | "admin_empresa" | "rh_gestor" | "visualizador"
       categoria_beneficio: "saude" | "vida" | "odonto"
+      prioridade_demanda: "baixa" | "media" | "alta" | "urgente"
       status_contrato:
         | "ativo"
         | "vencido"
         | "em_renovacao"
         | "suspenso"
         | "cancelado"
+      status_demanda:
+        | "pendente"
+        | "em_andamento"
+        | "aguardando_documentacao"
+        | "concluido"
+        | "cancelado"
       status_movimentacao: "pendente" | "aprovada" | "rejeitada" | "processada"
+      tipo_demanda:
+        | "certificado"
+        | "carteirinha"
+        | "alteracao_cadastral"
+        | "reembolso"
+        | "autorizacao"
+        | "agendamento"
+        | "outro"
       tipo_documento_contrato: "contrato" | "aditivo" | "renovacao"
       tipo_movimentacao:
         | "inclusao"
@@ -418,6 +530,7 @@ export const Constants = {
     Enums: {
       app_role: ["admin_vizio", "admin_empresa", "rh_gestor", "visualizador"],
       categoria_beneficio: ["saude", "vida", "odonto"],
+      prioridade_demanda: ["baixa", "media", "alta", "urgente"],
       status_contrato: [
         "ativo",
         "vencido",
@@ -425,7 +538,23 @@ export const Constants = {
         "suspenso",
         "cancelado",
       ],
+      status_demanda: [
+        "pendente",
+        "em_andamento",
+        "aguardando_documentacao",
+        "concluido",
+        "cancelado",
+      ],
       status_movimentacao: ["pendente", "aprovada", "rejeitada", "processada"],
+      tipo_demanda: [
+        "certificado",
+        "carteirinha",
+        "alteracao_cadastral",
+        "reembolso",
+        "autorizacao",
+        "agendamento",
+        "outro",
+      ],
       tipo_documento_contrato: ["contrato", "aditivo", "renovacao"],
       tipo_movimentacao: [
         "inclusao",

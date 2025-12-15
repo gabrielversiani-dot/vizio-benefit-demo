@@ -82,6 +82,127 @@ export type Database = {
           },
         ]
       }
+      beneficiarios: {
+        Row: {
+          bairro: string | null
+          cargo: string | null
+          cep: string | null
+          cidade: string | null
+          complemento: string | null
+          cpf: string
+          created_at: string
+          criado_por: string
+          data_exclusao: string | null
+          data_inclusao: string
+          data_nascimento: string
+          departamento: string | null
+          email: string | null
+          empresa_id: string
+          endereco: string | null
+          grau_parentesco: Database["public"]["Enums"]["grau_parentesco"] | null
+          id: string
+          matricula: string | null
+          motivo_exclusao: string | null
+          nome_completo: string
+          numero: string | null
+          plano_odonto: boolean | null
+          plano_saude: boolean | null
+          plano_vida: boolean | null
+          sexo: string | null
+          status: Database["public"]["Enums"]["status_beneficiario"]
+          telefone: string | null
+          tipo: Database["public"]["Enums"]["tipo_beneficiario"]
+          titular_id: string | null
+          uf: string | null
+          updated_at: string
+        }
+        Insert: {
+          bairro?: string | null
+          cargo?: string | null
+          cep?: string | null
+          cidade?: string | null
+          complemento?: string | null
+          cpf: string
+          created_at?: string
+          criado_por: string
+          data_exclusao?: string | null
+          data_inclusao?: string
+          data_nascimento: string
+          departamento?: string | null
+          email?: string | null
+          empresa_id: string
+          endereco?: string | null
+          grau_parentesco?:
+            | Database["public"]["Enums"]["grau_parentesco"]
+            | null
+          id?: string
+          matricula?: string | null
+          motivo_exclusao?: string | null
+          nome_completo: string
+          numero?: string | null
+          plano_odonto?: boolean | null
+          plano_saude?: boolean | null
+          plano_vida?: boolean | null
+          sexo?: string | null
+          status?: Database["public"]["Enums"]["status_beneficiario"]
+          telefone?: string | null
+          tipo?: Database["public"]["Enums"]["tipo_beneficiario"]
+          titular_id?: string | null
+          uf?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bairro?: string | null
+          cargo?: string | null
+          cep?: string | null
+          cidade?: string | null
+          complemento?: string | null
+          cpf?: string
+          created_at?: string
+          criado_por?: string
+          data_exclusao?: string | null
+          data_inclusao?: string
+          data_nascimento?: string
+          departamento?: string | null
+          email?: string | null
+          empresa_id?: string
+          endereco?: string | null
+          grau_parentesco?:
+            | Database["public"]["Enums"]["grau_parentesco"]
+            | null
+          id?: string
+          matricula?: string | null
+          motivo_exclusao?: string | null
+          nome_completo?: string
+          numero?: string | null
+          plano_odonto?: boolean | null
+          plano_saude?: boolean | null
+          plano_vida?: boolean | null
+          sexo?: string | null
+          status?: Database["public"]["Enums"]["status_beneficiario"]
+          telefone?: string | null
+          tipo?: Database["public"]["Enums"]["tipo_beneficiario"]
+          titular_id?: string | null
+          uf?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "beneficiarios_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "beneficiarios_titular_id_fkey"
+            columns: ["titular_id"]
+            isOneToOne: false
+            referencedRelation: "beneficiarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contratos: {
         Row: {
           arquivo_nome: string
@@ -504,12 +625,14 @@ export type Database = {
         | "prevencao"
         | "outro"
       categoria_beneficio: "saude" | "vida" | "odonto"
+      grau_parentesco: "conjuge" | "filho" | "pai" | "mae" | "outro"
       prioridade_demanda: "baixa" | "media" | "alta" | "urgente"
       status_acao_saude:
         | "planejada"
         | "em_andamento"
         | "concluida"
         | "cancelada"
+      status_beneficiario: "ativo" | "inativo" | "suspenso"
       status_contrato:
         | "ativo"
         | "vencido"
@@ -524,6 +647,7 @@ export type Database = {
         | "cancelado"
       status_movimentacao: "pendente" | "aprovada" | "rejeitada" | "processada"
       tipo_acao_saude: "campanha" | "programa" | "evento" | "treinamento"
+      tipo_beneficiario: "titular" | "dependente"
       tipo_demanda:
         | "certificado"
         | "carteirinha"
@@ -677,6 +801,7 @@ export const Constants = {
         "outro",
       ],
       categoria_beneficio: ["saude", "vida", "odonto"],
+      grau_parentesco: ["conjuge", "filho", "pai", "mae", "outro"],
       prioridade_demanda: ["baixa", "media", "alta", "urgente"],
       status_acao_saude: [
         "planejada",
@@ -684,6 +809,7 @@ export const Constants = {
         "concluida",
         "cancelada",
       ],
+      status_beneficiario: ["ativo", "inativo", "suspenso"],
       status_contrato: [
         "ativo",
         "vencido",
@@ -700,6 +826,7 @@ export const Constants = {
       ],
       status_movimentacao: ["pendente", "aprovada", "rejeitada", "processada"],
       tipo_acao_saude: ["campanha", "programa", "evento", "treinamento"],
+      tipo_beneficiario: ["titular", "dependente"],
       tipo_demanda: [
         "certificado",
         "carteirinha",

@@ -192,17 +192,13 @@ export default function Contratos() {
 
       if (uploadError) throw uploadError;
 
-      // Obter URL pública
-      const { data: { publicUrl } } = supabase.storage
-        .from('contratos')
-        .getPublicUrl(fileName);
-
+      // Armazenar o caminho do arquivo (não URL pública)
       // Inserir registro no banco
       const { error: insertError } = await supabase
         .from('contratos')
         .insert({
           ...formData,
-          arquivo_url: publicUrl,
+          arquivo_url: fileName, // Armazena apenas o path, não a URL pública
           arquivo_nome: arquivo.name,
           criado_por: user.id,
           valor_mensal: formData.valor_mensal ? parseFloat(formData.valor_mensal) : null,
@@ -241,9 +237,14 @@ export default function Contratos() {
 
   const handleDownload = async (contrato: Contrato) => {
     try {
+      // Extrair o caminho do arquivo (pode ser path direto ou URL antiga)
+      const filePath = contrato.arquivo_url.includes('/contratos/')
+        ? contrato.arquivo_url.split('/contratos/')[1]
+        : contrato.arquivo_url;
+
       const { data, error } = await supabase.storage
         .from('contratos')
-        .download(contrato.arquivo_url.split('/contratos/')[1]);
+        .download(filePath);
 
       if (error) throw error;
 

@@ -131,18 +131,14 @@ const MovimentacaoVidas = () => {
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from("movimentacoes")
-        .getPublicUrl(fileName);
-
+      // Armazenar apenas o caminho do arquivo (não URL pública)
       // Create movement record
       const { error: insertError } = await supabase
         .from("movimentacoes_vidas")
         .insert({
           tipo: tipo as "inclusao" | "exclusao" | "alteracao_cadastral" | "mudanca_plano",
           categoria: categoria as "saude" | "vida" | "odonto",
-          arquivo_url: publicUrl,
+          arquivo_url: fileName, // Armazena apenas o path, não a URL pública
           arquivo_nome: selectedFile.name,
           empresa_id: profile.empresa_id,
           criado_por: user.id,

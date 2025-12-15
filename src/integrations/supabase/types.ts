@@ -417,6 +417,74 @@ export type Database = {
         }
         Relationships: []
       }
+      faturamento: {
+        Row: {
+          categoria: Database["public"]["Enums"]["categoria_beneficio"]
+          competencia: string
+          created_at: string
+          criado_por: string
+          data_pagamento: string | null
+          data_vencimento: string | null
+          empresa_id: string
+          id: string
+          status: string
+          total_dependentes: number
+          total_titulares: number
+          total_vidas: number
+          updated_at: string
+          valor_coparticipacao: number | null
+          valor_mensalidade: number
+          valor_reembolsos: number | null
+          valor_total: number
+        }
+        Insert: {
+          categoria: Database["public"]["Enums"]["categoria_beneficio"]
+          competencia: string
+          created_at?: string
+          criado_por: string
+          data_pagamento?: string | null
+          data_vencimento?: string | null
+          empresa_id: string
+          id?: string
+          status?: string
+          total_dependentes?: number
+          total_titulares?: number
+          total_vidas?: number
+          updated_at?: string
+          valor_coparticipacao?: number | null
+          valor_mensalidade?: number
+          valor_reembolsos?: number | null
+          valor_total?: number
+        }
+        Update: {
+          categoria?: Database["public"]["Enums"]["categoria_beneficio"]
+          competencia?: string
+          created_at?: string
+          criado_por?: string
+          data_pagamento?: string | null
+          data_vencimento?: string | null
+          empresa_id?: string
+          id?: string
+          status?: string
+          total_dependentes?: number
+          total_titulares?: number
+          total_vidas?: number
+          updated_at?: string
+          valor_coparticipacao?: number | null
+          valor_mensalidade?: number
+          valor_reembolsos?: number | null
+          valor_total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faturamento_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       indicadores_saude: {
         Row: {
           acao_id: string
@@ -571,6 +639,127 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "profiles_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sinistralidade: {
+        Row: {
+          categoria: Database["public"]["Enums"]["categoria_beneficio"]
+          competencia: string
+          created_at: string
+          criado_por: string
+          empresa_id: string
+          id: string
+          indice_sinistralidade: number | null
+          quantidade_sinistros: number
+          sinistros_consultas: number | null
+          sinistros_exames: number | null
+          sinistros_internacoes: number | null
+          sinistros_outros: number | null
+          sinistros_procedimentos: number | null
+          updated_at: string
+          valor_premio: number
+          valor_sinistros: number
+        }
+        Insert: {
+          categoria: Database["public"]["Enums"]["categoria_beneficio"]
+          competencia: string
+          created_at?: string
+          criado_por: string
+          empresa_id: string
+          id?: string
+          indice_sinistralidade?: number | null
+          quantidade_sinistros?: number
+          sinistros_consultas?: number | null
+          sinistros_exames?: number | null
+          sinistros_internacoes?: number | null
+          sinistros_outros?: number | null
+          sinistros_procedimentos?: number | null
+          updated_at?: string
+          valor_premio?: number
+          valor_sinistros?: number
+        }
+        Update: {
+          categoria?: Database["public"]["Enums"]["categoria_beneficio"]
+          competencia?: string
+          created_at?: string
+          criado_por?: string
+          empresa_id?: string
+          id?: string
+          indice_sinistralidade?: number | null
+          quantidade_sinistros?: number
+          sinistros_consultas?: number | null
+          sinistros_exames?: number | null
+          sinistros_internacoes?: number | null
+          sinistros_outros?: number | null
+          sinistros_procedimentos?: number | null
+          updated_at?: string
+          valor_premio?: number
+          valor_sinistros?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sinistralidade_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sinistros_vida: {
+        Row: {
+          beneficiario_cpf: string | null
+          beneficiario_nome: string
+          created_at: string
+          criado_por: string
+          data_comunicacao: string | null
+          data_ocorrencia: string
+          empresa_id: string
+          id: string
+          observacoes: string | null
+          status: string
+          tipo_sinistro: string
+          updated_at: string
+          valor_indenizacao: number | null
+        }
+        Insert: {
+          beneficiario_cpf?: string | null
+          beneficiario_nome: string
+          created_at?: string
+          criado_por: string
+          data_comunicacao?: string | null
+          data_ocorrencia: string
+          empresa_id: string
+          id?: string
+          observacoes?: string | null
+          status?: string
+          tipo_sinistro: string
+          updated_at?: string
+          valor_indenizacao?: number | null
+        }
+        Update: {
+          beneficiario_cpf?: string | null
+          beneficiario_nome?: string
+          created_at?: string
+          criado_por?: string
+          data_comunicacao?: string | null
+          data_ocorrencia?: string
+          empresa_id?: string
+          id?: string
+          observacoes?: string | null
+          status?: string
+          tipo_sinistro?: string
+          updated_at?: string
+          valor_indenizacao?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sinistros_vida_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"

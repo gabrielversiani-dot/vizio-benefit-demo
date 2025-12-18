@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Upload, FileText, Download, CheckCircle, XCircle, Clock, AlertCircle } from "lucide-react";
+import { Upload, FileText, Download, CheckCircle, XCircle, Clock, AlertCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +17,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 const MovimentacaoVidas = () => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [tipo, setTipo] = useState<string>("");
   const [categoria, setCategoria] = useState<string>("");
@@ -23,55 +25,41 @@ const MovimentacaoVidas = () => {
   const [observacoes, setObservacoes] = useState("");
   const [motivoRejeicao, setMotivoRejeicao] = useState("");
 
-  // Mock data for demonstration
-  const movimentacoesPendentes = [
-    {
-      id: "1",
-      tipo: "inclusao",
-      categoria: "saude",
-      arquivo_nome: "inclusoes_maio_2024.xlsx",
-      total_registros: 45,
-      data_upload: "2024-05-15T10:30:00",
-      criado_por: "João Silva",
-      observacoes: "Inclusões do mês de maio",
+  // Query para movimentações pendentes
+  const { data: movimentacoesPendentes = [], isLoading: loadingPendentes } = useQuery({
+    queryKey: ["movimentacoes-pendentes"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("movimentacoes_vidas")
+        .select(`
+          *,
+          profiles:criado_por(nome_completo)
+        `)
+        .eq("status", "pendente")
+        .order("data_upload", { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
     },
-    {
-      id: "2",
-      tipo: "exclusao",
-      categoria: "odonto",
-      arquivo_nome: "exclusoes_desligamentos.xlsx",
-      total_registros: 12,
-      data_upload: "2024-05-14T14:20:00",
-      criado_por: "Maria Santos",
-      observacoes: "Desligamentos aprovados pela diretoria",
-    },
-  ];
+  });
 
-  const historicoMovimentacoes = [
-    {
-      id: "3",
-      tipo: "alteracao_cadastral",
-      categoria: "vida",
-      arquivo_nome: "alteracoes_cadastrais_abril.xlsx",
-      total_registros: 28,
-      registros_processados: 28,
-      status: "processada",
-      data_upload: "2024-04-20T09:15:00",
-      data_processamento: "2024-04-21T16:30:00",
-      aprovado_por: "Admin Sistema",
+  // Query para histórico de movimentações
+  const { data: historicoMovimentacoes = [], isLoading: loadingHistorico } = useQuery({
+    queryKey: ["movimentacoes-historico"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("movimentacoes_vidas")
+        .select(`
+          *,
+          profiles:aprovado_por(nome_completo)
+        `)
+        .neq("status", "pendente")
+        .order("data_upload", { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
     },
-    {
-      id: "4",
-      tipo: "mudanca_plano",
-      categoria: "saude",
-      arquivo_nome: "upgrades_plano.xlsx",
-      total_registros: 15,
-      registros_processados: 0,
-      status: "rejeitada",
-      data_upload: "2024-04-18T11:00:00",
-      motivo_rejeicao: "Dados inconsistentes na planilha",
-    },
-  ];
+  });
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -189,6 +177,9 @@ const MovimentacaoVidas = () => {
 
       if (error) throw error;
 
+      queryClient.invalidateQueries({ queryKey: ["movimentacoes-pendentes"] });
+      queryClient.invalidateQueries({ queryKey: ["movimentacoes-historico"] });
+
       toast({
         title: "Movimentação aprovada",
         description: "A movimentação foi aprovada e será processada",
@@ -227,6 +218,9 @@ const MovimentacaoVidas = () => {
         title: "Movimentação rejeitada",
         description: "A movimentação foi rejeitada",
       });
+      
+      queryClient.invalidateQueries({ queryKey: ["movimentacoes-pendentes"] });
+      queryClient.invalidateQueries({ queryKey: ["movimentacoes-historico"] });
       
       setMotivoRejeicao("");
     } catch (error: any) {
@@ -399,79 +393,90 @@ const MovimentacaoVidas = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Categoria</TableHead>
-                      <TableHead>Arquivo</TableHead>
-                      <TableHead>Registros</TableHead>
-                      <TableHead>Enviado por</TableHead>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {movimentacoesPendentes.map((mov) => (
-                      <TableRow key={mov.id}>
-                        <TableCell>{getTipoLabel(mov.tipo)}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{getCategoriaLabel(mov.categoria)}</Badge>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">{mov.arquivo_nome}</TableCell>
-                        <TableCell>{mov.total_registros}</TableCell>
-                        <TableCell>{mov.criado_por}</TableCell>
-                        <TableCell>
-                          {new Date(mov.data_upload).toLocaleDateString("pt-BR")}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleAprovar(mov.id)}
-                            >
-                              <CheckCircle className="h-4 w-4 mr-1" />
-                              Aprovar
-                            </Button>
-                            
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button size="sm" variant="destructive">
-                                  <XCircle className="h-4 w-4 mr-1" />
-                                  Rejeitar
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Rejeitar Movimentação</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Informe o motivo da rejeição
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <Textarea
-                                  placeholder="Motivo da rejeição..."
-                                  value={motivoRejeicao}
-                                  onChange={(e) => setMotivoRejeicao(e.target.value)}
-                                  rows={3}
-                                />
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel onClick={() => setMotivoRejeicao("")}>
-                                    Cancelar
-                                  </AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => handleRejeitar(mov.id, motivoRejeicao)}
-                                  >
-                                    Confirmar Rejeição
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </TableCell>
+                {loadingPendentes ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : movimentacoesPendentes.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <Clock className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                    <p className="text-muted-foreground">Nenhuma movimentação pendente de aprovação</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead>Arquivo</TableHead>
+                        <TableHead>Registros</TableHead>
+                        <TableHead>Enviado por</TableHead>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Ações</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {movimentacoesPendentes.map((mov: any) => (
+                        <TableRow key={mov.id}>
+                          <TableCell>{getTipoLabel(mov.tipo)}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{getCategoriaLabel(mov.categoria)}</Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">{mov.arquivo_nome}</TableCell>
+                          <TableCell>{mov.total_registros}</TableCell>
+                          <TableCell>{mov.profiles?.nome_completo || "-"}</TableCell>
+                          <TableCell>
+                            {new Date(mov.data_upload).toLocaleDateString("pt-BR")}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleAprovar(mov.id)}
+                              >
+                                <CheckCircle className="h-4 w-4 mr-1" />
+                                Aprovar
+                              </Button>
+                              
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button size="sm" variant="destructive">
+                                    <XCircle className="h-4 w-4 mr-1" />
+                                    Rejeitar
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Rejeitar Movimentação</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Informe o motivo da rejeição
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <Textarea
+                                    placeholder="Motivo da rejeição..."
+                                    value={motivoRejeicao}
+                                    onChange={(e) => setMotivoRejeicao(e.target.value)}
+                                    rows={3}
+                                  />
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel onClick={() => setMotivoRejeicao("")}>
+                                      Cancelar
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleRejeitar(mov.id, motivoRejeicao)}
+                                    >
+                                      Confirmar Rejeição
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -485,42 +490,53 @@ const MovimentacaoVidas = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Categoria</TableHead>
-                      <TableHead>Arquivo</TableHead>
-                      <TableHead>Registros</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Data Upload</TableHead>
-                      <TableHead>Data Processamento</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {historicoMovimentacoes.map((mov) => (
-                      <TableRow key={mov.id}>
-                        <TableCell>{getTipoLabel(mov.tipo)}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{getCategoriaLabel(mov.categoria)}</Badge>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">{mov.arquivo_nome}</TableCell>
-                        <TableCell>
-                          {mov.registros_processados}/{mov.total_registros}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(mov.status)}</TableCell>
-                        <TableCell>
-                          {new Date(mov.data_upload).toLocaleDateString("pt-BR")}
-                        </TableCell>
-                        <TableCell>
-                          {mov.data_processamento
-                            ? new Date(mov.data_processamento).toLocaleDateString("pt-BR")
-                            : "-"}
-                        </TableCell>
+                {loadingHistorico ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : historicoMovimentacoes.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <FileText className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                    <p className="text-muted-foreground">Nenhum histórico de movimentações encontrado</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead>Arquivo</TableHead>
+                        <TableHead>Registros</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Data Upload</TableHead>
+                        <TableHead>Data Processamento</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {historicoMovimentacoes.map((mov: any) => (
+                        <TableRow key={mov.id}>
+                          <TableCell>{getTipoLabel(mov.tipo)}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{getCategoriaLabel(mov.categoria)}</Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">{mov.arquivo_nome}</TableCell>
+                          <TableCell>
+                            {mov.registros_processados}/{mov.total_registros}
+                          </TableCell>
+                          <TableCell>{getStatusBadge(mov.status)}</TableCell>
+                          <TableCell>
+                            {new Date(mov.data_upload).toLocaleDateString("pt-BR")}
+                          </TableCell>
+                          <TableCell>
+                            {mov.data_processamento
+                              ? new Date(mov.data_processamento).toLocaleDateString("pt-BR")
+                              : "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

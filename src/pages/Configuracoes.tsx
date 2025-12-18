@@ -53,11 +53,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-const mockReports = [
-  { id: 1, nome: "Relatório Mensal de Sinistralidade", tipo: "PDF", frequencia: "Mensal", ativo: true },
-  { id: 2, nome: "Análise de Faturamento Trimestral", tipo: "Excel", frequencia: "Trimestral", ativo: true },
-  { id: 3, nome: "Dashboard de Vidas Ativas", tipo: "PDF", frequencia: "Semanal", ativo: false },
-];
 
 // Templates de importação
 const downloadTemplate = (type: string) => {
@@ -610,101 +605,6 @@ export default function Configuracoes() {
                 <Button variant="outline" size="sm">
                   Atribuir Role Admin
                 </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Seção de Relatórios */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <CardTitle>Relatórios Personalizados</CardTitle>
-                  <CardDescription>
-                    Configure e gerencie seus relatórios automatizados
-                  </CardDescription>
-                </div>
-              </div>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                Novo Relatório
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {mockReports.map((report) => (
-                <div
-                  key={report.id}
-                  className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="h-12 w-12 rounded-lg bg-success/10 flex items-center justify-center">
-                      <FileText className="h-6 w-6 text-success" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-semibold">{report.nome}</p>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                        <span className="flex items-center gap-1">
-                          <Download className="h-3.5 w-3.5" />
-                          {report.tipo}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3.5 w-3.5" />
-                          {report.frequencia}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <Switch checked={report.ativo} />
-                      <span className="text-sm text-muted-foreground">
-                        {report.ativo ? "Ativo" : "Inativo"}
-                      </span>
-                    </div>
-                    <Button variant="ghost" size="sm">
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm">
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-
-              <Separator className="my-6" />
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="report-email">E-mail para envio automático</Label>
-                  <Input
-                    id="report-email"
-                    type="email"
-                    placeholder="financeiro@viziocapital.com.br"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="report-format">Formato padrão</Label>
-                  <select
-                    id="report-format"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="pdf">PDF</option>
-                    <option value="excel">Excel (XLSX)</option>
-                    <option value="csv">CSV</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 mt-6">
-                <Button variant="outline">Cancelar</Button>
-                <Button>Salvar Configurações</Button>
               </div>
             </div>
           </CardContent>

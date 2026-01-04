@@ -6,14 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, UserPlus, Users, UserCheck, UserX, Heart, Shield, Smile, Building2, Upload } from "lucide-react";
-import { LineChart, Line, PieChart, Pie, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
-import { useQuery } from "@tanstack/react-query";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Search, UserPlus, Users, UserCheck, Heart, Shield, Smile, Building2, Upload, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { PieChart, Pie, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useMemo } from "react";
 import { useEmpresa } from "@/contexts/EmpresaContext";
 import { format } from "date-fns";
 import { ImportCSVModal } from "@/components/Beneficiarios/ImportCSVModal";
+import { BeneficiarioFormModal } from "@/components/Beneficiarios/BeneficiarioFormModal";
 import { toast } from "sonner";
 type Beneficiario = {
   id: string;
@@ -21,10 +24,19 @@ type Beneficiario = {
   cpf: string;
   data_nascimento: string;
   sexo: string | null;
+  email: string | null;
+  telefone: string | null;
+  cep: string | null;
+  endereco: string | null;
+  numero: string | null;
+  complemento: string | null;
+  bairro: string | null;
   cidade: string | null;
   uf: string | null;
+  matricula: string | null;
   tipo: string;
   titular_id: string | null;
+  grau_parentesco: string | null;
   cargo: string | null;
   departamento: string | null;
   plano_saude: boolean | null;
@@ -76,12 +88,17 @@ function getFaixaEtaria(idade: number): string {
 
 export default function Beneficiarios() {
   const { empresaSelecionada } = useEmpresa();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("todos");
   const [tipoFilter, setTipoFilter] = useState<string>("todos");
   const [planoFilter, setPlanoFilter] = useState<string>("todos");
   const [empresaFilter, setEmpresaFilter] = useState<string>("todas");
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [formModalOpen, setFormModalOpen] = useState(false);
+  const [selectedBeneficiario, setSelectedBeneficiario] = useState<Beneficiario | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [beneficiarioToDelete, setBeneficiarioToDelete] = useState<Beneficiario | null>(null);
 
   // Fetch empresas
   const { data: empresas = [] } = useQuery({
@@ -193,6 +210,45 @@ export default function Beneficiarios() {
   const beneficiariosVida = filteredBeneficiarios.filter(b => b.plano_vida);
   const beneficiariosOdonto = filteredBeneficiarios.filter(b => b.plano_odonto);
 
+  const handleEdit = (beneficiario: Beneficiario) => {
+    setSelectedBeneficiario(beneficiario);
+    setFormModalOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!beneficiarioToDelete) return;
+    
+    try {
+      const { error } = await supabase
+        .from("beneficiarios")
+        .delete()
+        .eq("id", beneficiarioToDelete.id);
+      
+      if (error) throw error;
+      
+      toast.success("Beneficiário excluído com sucesso!");
+      queryClient.invalidateQueries({ queryKey: ["beneficiarios"] });
+    } catch (error: any) {
+      console.error("Erro ao excluir:", error);
+      toast.error(error.message || "Erro ao excluir beneficiário");
+    } finally {
+      setDeleteDialogOpen(false);
+      setBeneficiarioToDelete(null);
+    }
+  };
+
+  const openDeleteDialog = (beneficiario: Beneficiario) => {
+    setBeneficiarioToDelete(beneficiario);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleFormClose = (open: boolean) => {
+    setFormModalOpen(open);
+    if (!open) {
+      setSelectedBeneficiario(null);
+    }
+  };
+
   const renderBeneficiariosList = (list: Beneficiario[], planoLabel: string) => (
     <div className="space-y-4">
       <div className="flex items-center gap-4 flex-wrap">
@@ -260,6 +316,7 @@ export default function Beneficiarios() {
                 <TableHead>Cargo</TableHead>
                 <TableHead>Data Inclusão</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -277,6 +334,28 @@ export default function Beneficiarios() {
                     <Badge className={statusColors[b.status]}>
                       {statusLabels[b.status]}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEdit(b)}>
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => openDeleteDialog(b)}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}
@@ -311,7 +390,16 @@ export default function Beneficiarios() {
               <Upload className="h-4 w-4 mr-2" />
               Importar CSV
             </Button>
-            <Button>
+            <Button
+              onClick={() => {
+                if (!empresaSelecionada) {
+                  toast.error("Selecione uma empresa para adicionar beneficiário");
+                  return;
+                }
+                setSelectedBeneficiario(null);
+                setFormModalOpen(true);
+              }}
+            >
               <UserPlus className="h-4 w-4 mr-2" />
               Adicionar Beneficiário
             </Button>
@@ -319,12 +407,38 @@ export default function Beneficiarios() {
         </div>
 
         {empresaSelecionada && (
-          <ImportCSVModal
-            open={importModalOpen}
-            onOpenChange={setImportModalOpen}
-            empresaId={empresaSelecionada}
-          />
+          <>
+            <ImportCSVModal
+              open={importModalOpen}
+              onOpenChange={setImportModalOpen}
+              empresaId={empresaSelecionada}
+            />
+            <BeneficiarioFormModal
+              open={formModalOpen}
+              onOpenChange={handleFormClose}
+              empresaId={empresaSelecionada}
+              beneficiario={selectedBeneficiario}
+            />
+          </>
         )}
+
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir o beneficiário "{beneficiarioToDelete?.nome_completo}"? 
+                Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <Tabs defaultValue="dashboard" className="w-full">
           <TabsList className="grid w-full max-w-2xl grid-cols-4">
@@ -605,6 +719,7 @@ export default function Beneficiarios() {
                         <TableHead>Planos</TableHead>
                         <TableHead>Cidade/UF</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead className="w-[50px]"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -627,6 +742,28 @@ export default function Beneficiarios() {
                             <Badge className={statusColors[b.status]}>
                               {statusLabels[b.status]}
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleEdit(b)}>
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => openDeleteDialog(b)}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Excluir
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       ))}

@@ -60,6 +60,22 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Security Configuration
+
+### Leaked Password Protection (HIBP)
+
+Este projeto utiliza **Leaked Password Protection** via [Have I Been Pwned](https://haveibeenpwned.com/). 
+
+**Importante para desenvolvimento/testes:**
+- Senhas comuns como `123456`, `password`, `qwerty` serão **rejeitadas** pelo sistema
+- Durante testes, use senhas únicas e fortes (ex: `TestSenha2024!@#`)
+- Esta proteção está habilitada em **todos os ambientes** (dev, staging, produção)
+
+**Como ativar/verificar:**
+1. Acesse Cloud → Users → Auth Settings → Email
+2. Habilite "Password HIBP Check"
+3. Senhas encontradas em vazamentos serão bloqueadas automaticamente
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/b1f1f28d-2653-46fd-a64a-f66923458280) and click on Share -> Publish.

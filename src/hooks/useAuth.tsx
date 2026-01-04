@@ -51,6 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
           toast.error('Email ou senha incorretos');
+        } else if (error.message.includes('Password is known to be weak') || 
+                   error.message.includes('been pwned') ||
+                   error.message.includes('data breach')) {
+          toast.error('Esta senha foi encontrada em vazamentos de dados. Redefina sua senha.');
         } else {
           toast.error(error.message);
         }
@@ -85,6 +89,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         if (error.message.includes('already registered')) {
           toast.error('Este email já está cadastrado');
+        } else if (error.message.includes('Password is known to be weak') || 
+                   error.message.includes('been pwned') ||
+                   error.message.includes('data breach')) {
+          toast.error('Esta senha foi encontrada em vazamentos de dados. Por segurança, escolha uma senha diferente.');
+        } else if (error.message.includes('weak password')) {
+          toast.error('A senha é muito fraca. Use uma senha mais forte com letras, números e símbolos.');
         } else {
           toast.error(error.message);
         }

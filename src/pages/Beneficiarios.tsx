@@ -6,14 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, UserPlus, Users, UserCheck, UserX, Heart, Shield, Smile, Building2 } from "lucide-react";
+import { Search, UserPlus, Users, UserCheck, UserX, Heart, Shield, Smile, Building2, Upload } from "lucide-react";
 import { LineChart, Line, PieChart, Pie, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useMemo } from "react";
 import { useEmpresa } from "@/contexts/EmpresaContext";
 import { format } from "date-fns";
-
+import { ImportCSVModal } from "@/components/Beneficiarios/ImportCSVModal";
+import { toast } from "sonner";
 type Beneficiario = {
   id: string;
   nome_completo: string;
@@ -80,6 +81,7 @@ export default function Beneficiarios() {
   const [tipoFilter, setTipoFilter] = useState<string>("todos");
   const [planoFilter, setPlanoFilter] = useState<string>("todos");
   const [empresaFilter, setEmpresaFilter] = useState<string>("todas");
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   // Fetch empresas
   const { data: empresas = [] } = useQuery({
@@ -295,11 +297,34 @@ export default function Beneficiarios() {
               Gestão de beneficiários por categoria
             </p>
           </div>
-          <Button>
-            <UserPlus className="h-4 w-4 mr-2" />
-            Adicionar Beneficiário
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                if (!empresaSelecionada) {
+                  toast.error("Selecione uma empresa para importar beneficiários");
+                  return;
+                }
+                setImportModalOpen(true);
+              }}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Importar CSV
+            </Button>
+            <Button>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Adicionar Beneficiário
+            </Button>
+          </div>
         </div>
+
+        {empresaSelecionada && (
+          <ImportCSVModal
+            open={importModalOpen}
+            onOpenChange={setImportModalOpen}
+            empresaId={empresaSelecionada}
+          />
+        )}
 
         <Tabs defaultValue="dashboard" className="w-full">
           <TabsList className="grid w-full max-w-2xl grid-cols-4">

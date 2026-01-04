@@ -15,6 +15,22 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -34,7 +50,11 @@ import {
   FileSignature,
   Calendar,
   DollarSign,
-  Filter
+  Filter,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -90,6 +110,9 @@ export default function Contratos() {
   const [isAdminVizio, setIsAdminVizio] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusContrato | 'todos'>('todos');
   const [tipoFilter, setTipoFilter] = useState<TipoDocumento | 'todos'>('todos');
+  const [editingContrato, setEditingContrato] = useState<Contrato | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [contratoToDelete, setContratoToDelete] = useState<Contrato | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -177,36 +200,72 @@ export default function Contratos() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!arquivo || !user) return;
+    if (!user) return;
+
+    // Se editando, arquivo é opcional; se criando, é obrigatório
+    if (!editingContrato && !arquivo) {
+      toast.error('Selecione um arquivo');
+      return;
+    }
 
     setUploading(true);
     try {
-      // Upload do arquivo para storage
-      const empresaId = formData.empresa_id;
-      const timestamp = Date.now();
-      const fileName = `${empresaId}/${timestamp}_${arquivo.name}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('contratos')
-        .upload(fileName, arquivo);
+      let fileUrl = editingContrato?.arquivo_url || '';
+      let fileName = editingContrato?.arquivo_nome || '';
 
-      if (uploadError) throw uploadError;
+      // Se houver novo arquivo, fazer upload
+      if (arquivo) {
+        const empresaId = formData.empresa_id;
+        const timestamp = Date.now();
+        const newFilePath = `${empresaId}/${timestamp}_${arquivo.name}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('contratos')
+          .upload(newFilePath, arquivo);
 
-      // Armazenar o caminho do arquivo (não URL pública)
-      // Inserir registro no banco
-      const { error: insertError } = await supabase
-        .from('contratos')
-        .insert({
-          ...formData,
-          arquivo_url: fileName, // Armazena apenas o path, não a URL pública
-          arquivo_nome: arquivo.name,
-          criado_por: user.id,
-          valor_mensal: formData.valor_mensal ? parseFloat(formData.valor_mensal) : null,
-        });
+        if (uploadError) throw uploadError;
 
-      if (insertError) throw insertError;
+        // Se editando, deletar arquivo antigo
+        if (editingContrato) {
+          const oldPath = editingContrato.arquivo_url.includes('/contratos/')
+            ? editingContrato.arquivo_url.split('/contratos/')[1]
+            : editingContrato.arquivo_url;
+          await supabase.storage.from('contratos').remove([oldPath]);
+        }
 
-      toast.success('Contrato cadastrado com sucesso!');
+        fileUrl = newFilePath;
+        fileName = arquivo.name;
+      }
+
+      const payload = {
+        ...formData,
+        arquivo_url: fileUrl,
+        arquivo_nome: fileName,
+        valor_mensal: formData.valor_mensal ? parseFloat(formData.valor_mensal) : null,
+      };
+
+      if (editingContrato) {
+        // Atualizar
+        const { error: updateError } = await supabase
+          .from('contratos')
+          .update(payload)
+          .eq('id', editingContrato.id);
+
+        if (updateError) throw updateError;
+        toast.success('Contrato atualizado com sucesso!');
+      } else {
+        // Inserir
+        const { error: insertError } = await supabase
+          .from('contratos')
+          .insert({
+            ...payload,
+            criado_por: user.id,
+          });
+
+        if (insertError) throw insertError;
+        toast.success('Contrato cadastrado com sucesso!');
+      }
+
       setIsDialogOpen(false);
       resetForm();
       fetchContratos();
@@ -233,6 +292,74 @@ export default function Contratos() {
       data_assinatura: "",
     });
     setArquivo(null);
+    setEditingContrato(null);
+  };
+
+  const handleEdit = (contrato: Contrato) => {
+    setEditingContrato(contrato);
+    setFormData({
+      empresa_id: contrato.empresa_id,
+      titulo: contrato.titulo,
+      tipo: contrato.tipo,
+      numero_contrato: contrato.numero_contrato || "",
+      status: contrato.status,
+      data_inicio: contrato.data_inicio,
+      data_fim: contrato.data_fim,
+      valor_mensal: contrato.valor_mensal?.toString() || "",
+      observacoes: contrato.observacoes || "",
+      assinado: contrato.assinado,
+      data_assinatura: contrato.data_assinatura || "",
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!contratoToDelete) return;
+
+    try {
+      // Deletar arquivo do storage
+      const filePath = contratoToDelete.arquivo_url.includes('/contratos/')
+        ? contratoToDelete.arquivo_url.split('/contratos/')[1]
+        : contratoToDelete.arquivo_url;
+
+      await supabase.storage.from('contratos').remove([filePath]);
+
+      // Deletar registro do banco
+      const { error } = await supabase
+        .from('contratos')
+        .delete()
+        .eq('id', contratoToDelete.id);
+
+      if (error) throw error;
+
+      toast.success('Contrato excluído com sucesso!');
+      fetchContratos();
+    } catch (error: any) {
+      console.error('Erro ao excluir contrato:', error);
+      toast.error('Erro ao excluir contrato');
+    } finally {
+      setDeleteDialogOpen(false);
+      setContratoToDelete(null);
+    }
+  };
+
+  const handlePreview = async (contrato: Contrato) => {
+    try {
+      const filePath = contrato.arquivo_url.includes('/contratos/')
+        ? contrato.arquivo_url.split('/contratos/')[1]
+        : contrato.arquivo_url;
+
+      const { data, error } = await supabase.storage
+        .from('contratos')
+        .createSignedUrl(filePath, 3600); // URL válida por 1 hora
+
+      if (error) throw error;
+
+      window.open(data.signedUrl, '_blank');
+    } catch (error: any) {
+      console.error('Erro ao abrir preview:', error);
+      toast.error('Erro ao abrir arquivo');
+    }
   };
 
   const handleDownload = async (contrato: Contrato) => {
@@ -294,18 +421,21 @@ export default function Contratos() {
           </div>
           
           {isAdminVizio && (
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) resetForm();
+            }}>
               <DialogTrigger asChild>
-                <Button className="gap-2">
+                <Button className="gap-2" onClick={() => { resetForm(); setIsDialogOpen(true); }}>
                   <Plus className="h-4 w-4" />
                   Novo Contrato
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Cadastrar Novo Contrato</DialogTitle>
+                  <DialogTitle>{editingContrato ? 'Editar Contrato' : 'Cadastrar Novo Contrato'}</DialogTitle>
                   <DialogDescription>
-                    Faça upload de contratos, aditivos ou renovações
+                    {editingContrato ? 'Atualize os dados do contrato' : 'Faça upload de contratos, aditivos ou renovações'}
                   </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -429,17 +559,24 @@ export default function Contratos() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="arquivo">Arquivo * (PDF, DOC, DOCX - Max 50MB)</Label>
+                    <Label htmlFor="arquivo">
+                      Arquivo {editingContrato ? '(deixe vazio para manter o atual)' : '*'} (PDF, DOC, DOCX - Max 50MB)
+                    </Label>
                     <Input
                       id="arquivo"
                       type="file"
                       accept=".pdf,.doc,.docx"
                       onChange={handleFileChange}
-                      required
+                      required={!editingContrato}
                     />
                     {arquivo && (
                       <p className="text-sm text-muted-foreground">
-                        Arquivo selecionado: {arquivo.name}
+                        Novo arquivo: {arquivo.name}
+                      </p>
+                    )}
+                    {editingContrato && !arquivo && (
+                      <p className="text-sm text-muted-foreground">
+                        Arquivo atual: {editingContrato.arquivo_nome}
                       </p>
                     )}
                   </div>
@@ -464,16 +601,16 @@ export default function Contratos() {
                     >
                       Cancelar
                     </Button>
-                    <Button type="submit" disabled={uploading || !arquivo}>
+                    <Button type="submit" disabled={uploading || (!editingContrato && !arquivo)}>
                       {uploading ? (
                         <>
                           <Upload className="h-4 w-4 mr-2 animate-spin" />
-                          Enviando...
+                          {editingContrato ? 'Atualizando...' : 'Enviando...'}
                         </>
                       ) : (
                         <>
                           <Upload className="h-4 w-4 mr-2" />
-                          Cadastrar
+                          {editingContrato ? 'Atualizar' : 'Cadastrar'}
                         </>
                       )}
                     </Button>
@@ -636,14 +773,50 @@ export default function Contratos() {
                                 )}
                               </div>
 
-                              <Button
-                                onClick={() => handleDownload(contrato)}
-                                size="sm"
-                                className="gap-2 ml-4"
-                              >
-                                <Download className="h-4 w-4" />
-                                Download
-                              </Button>
+                              <div className="flex items-center gap-2 ml-4">
+                                <Button
+                                  onClick={() => handlePreview(contrato)}
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-2"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                  Visualizar
+                                </Button>
+                                <Button
+                                  onClick={() => handleDownload(contrato)}
+                                  size="sm"
+                                  className="gap-2"
+                                >
+                                  <Download className="h-4 w-4" />
+                                  Download
+                                </Button>
+                                {isAdminVizio && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onClick={() => handleEdit(contrato)}>
+                                        <Pencil className="h-4 w-4 mr-2" />
+                                        Editar
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem 
+                                        onClick={() => {
+                                          setContratoToDelete(contrato);
+                                          setDeleteDialogOpen(true);
+                                        }}
+                                        className="text-destructive"
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Excluir
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
+                              </div>
                             </div>
                           </CardContent>
                         </Card>
@@ -655,6 +828,24 @@ export default function Contratos() {
             })}
           </div>
         )}
+
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir o contrato "{contratoToDelete?.titulo}"? 
+                O arquivo também será removido. Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppLayout>
   );

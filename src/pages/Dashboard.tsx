@@ -2,16 +2,21 @@ import { AppLayout } from "@/components/Layout/AppLayout";
 import { StatCard } from "@/components/Dashboard/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Activity, DollarSign, TrendingUp, Heart, Smile, Shield } from "lucide-react";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
 import { Skeleton } from "@/components/ui/skeleton";
+import { subMonths, format, startOfMonth } from "date-fns";
 
 const CHART_COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))'];
 
 export default function Dashboard() {
   const { empresaSelecionada } = useEmpresa();
+  
+  // Data de 6 meses atrás
+  const sixMonthsAgo = format(startOfMonth(subMonths(new Date(), 5)), 'yyyy-MM-dd');
+  const currentMonth = format(startOfMonth(new Date()), 'yyyy-MM-dd');
 
   // Fetch beneficiários count
   const { data: beneficiarios = [], isLoading: loadingBeneficiarios } = useQuery({
@@ -32,13 +37,15 @@ export default function Dashboard() {
     },
   });
 
-  // Fetch faturamento
+  // Fetch faturamento (últimos 6 meses)
   const { data: faturamento = [], isLoading: loadingFaturamento } = useQuery({
-    queryKey: ['dashboard-faturamento', empresaSelecionada],
+    queryKey: ['dashboard-faturamento', empresaSelecionada, sixMonthsAgo],
     queryFn: async () => {
       let query = supabase
         .from('faturamento')
         .select('*')
+        .gte('competencia', sixMonthsAgo)
+        .lte('competencia', currentMonth)
         .order('competencia', { ascending: true });
 
       if (empresaSelecionada) {
@@ -51,13 +58,15 @@ export default function Dashboard() {
     },
   });
 
-  // Fetch sinistralidade
+  // Fetch sinistralidade (últimos 6 meses)
   const { data: sinistralidade = [], isLoading: loadingSinistralidade } = useQuery({
-    queryKey: ['dashboard-sinistralidade', empresaSelecionada],
+    queryKey: ['dashboard-sinistralidade', empresaSelecionada, sixMonthsAgo],
     queryFn: async () => {
       let query = supabase
         .from('sinistralidade')
         .select('*')
+        .gte('competencia', sixMonthsAgo)
+        .lte('competencia', currentMonth)
         .order('competencia', { ascending: true });
 
       if (empresaSelecionada) {
@@ -77,15 +86,18 @@ export default function Dashboard() {
   const titulares = beneficiarios.filter(b => b.tipo === 'titular').length;
   const dependentes = beneficiarios.filter(b => b.tipo === 'dependente').length;
 
-  const faturamentoTotal = faturamento.reduce((acc, f) => acc + (f.valor_total || 0), 0);
-  const faturamentoMedio = faturamento.length > 0 ? faturamentoTotal / faturamento.length : 0;
+  // Pegar o último mês disponível para KPIs
+  const ultimoFaturamento = faturamento.length > 0 ? faturamento[faturamento.length - 1] : null;
+  const ultimaSinistralidade = sinistralidade.length > 0 ? sinistralidade[sinistralidade.length - 1] : null;
   
-  const sinistrosTotal = sinistralidade.reduce((acc, s) => acc + (s.valor_sinistros || 0), 0);
-  const premioTotal = sinistralidade.reduce((acc, s) => acc + (s.valor_premio || 0), 0);
-  const taxaSinistralidade = premioTotal > 0 ? (sinistrosTotal / premioTotal) * 100 : 0;
+  const faturamentoMes = ultimoFaturamento?.valor_total || 0;
+  const sinistrosMes = ultimaSinistralidade?.valor_sinistros || 0;
+  const premioMes = ultimaSinistralidade?.valor_premio || 0;
+  const taxaSinistralidade = premioMes > 0 ? (sinistrosMes / premioMes) * 100 : 0;
+  const ticketMedio = vidasAtivas > 0 ? faturamentoMes / vidasAtivas : 0;
 
-  // Monthly evolution data
-  const monthlyData = faturamento.slice(-12).map((f) => {
+  // Monthly evolution data (últimos 6 meses)
+  const monthlyData = faturamento.map((f) => {
     const competencia = new Date(f.competencia);
     const sinistroMes = sinistralidade.find(s => 
       new Date(s.competencia).getMonth() === competencia.getMonth() &&
@@ -165,15 +177,15 @@ export default function Dashboard() {
             iconColor="bg-success/10 text-success"
           />
           <StatCard
-            title="Faturamento Mensal"
-            value={faturamentoMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
-            change={faturamento.length > 0 ? `Média de ${faturamento.length} meses` : "Sem dados"}
+            title="Faturamento do Mês"
+            value={faturamentoMes.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+            change={ultimoFaturamento ? `Competência: ${new Date(ultimoFaturamento.competencia).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}` : "Sem dados"}
             changeType="neutral"
             icon={DollarSign}
             iconColor="bg-chart-2/10 text-chart-2"
           />
           <StatCard
-            title="Taxa de Sinistralidade"
+            title="Sinistralidade do Mês"
             value={`${taxaSinistralidade.toFixed(1)}%`}
             change={taxaSinistralidade > 75 ? "Atenção: acima do ideal" : taxaSinistralidade > 0 ? "Dentro do esperado" : "Sem dados"}
             changeType={taxaSinistralidade > 75 ? "negative" : taxaSinistralidade > 0 ? "positive" : "neutral"}
@@ -182,10 +194,7 @@ export default function Dashboard() {
           />
           <StatCard
             title="Ticket Médio"
-            value={vidasAtivas > 0 
-              ? (faturamentoMedio / vidasAtivas).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-              : "R$ 0,00"
-            }
+            value={ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             change="Por vida ativa"
             changeType="neutral"
             icon={TrendingUp}

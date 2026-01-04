@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
@@ -200,7 +200,6 @@ function parseCSV(content: string): { headers: string[]; rows: Record<string, st
 function detectDataType(headers: string[]): string {
   const normalizedHeaders = headers.map(h => h.toLowerCase().replace(/[_\s-]/g, ''));
   
-  // Check for specific patterns
   if (normalizedHeaders.some(h => h.includes('cpf') || h.includes('nascimento'))) {
     return 'beneficiarios';
   }
@@ -217,7 +216,7 @@ function detectDataType(headers: string[]): string {
     return 'movimentacoes';
   }
   
-  return 'beneficiarios'; // Default
+  return 'beneficiarios';
 }
 
 function mapColumns(headers: string[], dataType: string): Record<string, string> {
@@ -252,35 +251,19 @@ function validateCPF(cpf: string): boolean {
   return remainder === parseInt(cpf[10]);
 }
 
-function validateDate(dateStr: string): boolean {
-  if (!dateStr) return false;
-  
-  // Try different date formats
-  const formats = [
-    /^\d{4}-\d{2}-\d{2}$/, // YYYY-MM-DD
-    /^\d{2}\/\d{2}\/\d{4}$/, // DD/MM/YYYY
-    /^\d{2}-\d{2}-\d{4}$/, // DD-MM-YYYY
-  ];
-  
-  return formats.some(f => f.test(dateStr));
-}
-
 function normalizeDate(dateStr: string): string | null {
   if (!dateStr) return null;
   
-  // Handle DD/MM/YYYY
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
     const [day, month, year] = dateStr.split('/');
     return `${year}-${month}-${day}`;
   }
   
-  // Handle DD-MM-YYYY
   if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) {
     const [day, month, year] = dateStr.split('-');
     return `${year}-${month}-${day}`;
   }
   
-  // Already YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return dateStr;
   }
@@ -310,7 +293,6 @@ function validateRow(
   const mappedData: Record<string, unknown> = {};
   const schema = SCHEMAS[dataType as keyof typeof SCHEMAS];
   
-  // Map columns
   Object.entries(row).forEach(([originalCol, value]) => {
     const mappedCol = columnMapping[originalCol];
     if (mappedCol && value) {
@@ -318,16 +300,13 @@ function validateRow(
     }
   });
   
-  // Check required fields
   schema.required.forEach(field => {
     if (!mappedData[field]) {
       errors.push(`Campo obrigatório ausente: ${field}`);
     }
   });
   
-  // Specific validations based on data type
   if (dataType === 'beneficiarios') {
-    // Validate CPF
     if (mappedData.cpf) {
       const cpf = normalizeCPF(mappedData.cpf as string);
       if (!validateCPF(cpf)) {
@@ -338,7 +317,6 @@ function validateRow(
       mappedData.cpf = cpf;
     }
     
-    // Validate and normalize date
     if (mappedData.data_nascimento) {
       const normalized = normalizeDate(mappedData.data_nascimento as string);
       if (!normalized) {
@@ -348,7 +326,6 @@ function validateRow(
       }
     }
     
-    // Normalize boolean fields
     ['plano_saude', 'plano_vida', 'plano_odonto'].forEach(field => {
       if (mappedData[field]) {
         const val = (mappedData[field] as string).toLowerCase();
@@ -356,26 +333,19 @@ function validateRow(
       }
     });
     
-    // Normalize tipo
     if (mappedData.tipo) {
       const tipo = (mappedData.tipo as string).toLowerCase();
-      if (tipo.includes('dep')) {
-        mappedData.tipo = 'dependente';
-      } else {
-        mappedData.tipo = 'titular';
-      }
+      mappedData.tipo = tipo.includes('dep') ? 'dependente' : 'titular';
     } else {
       mappedData.tipo = 'titular';
     }
     
-    // Default status
     if (!mappedData.status) {
       mappedData.status = 'ativo';
     }
   }
   
   if (dataType === 'faturamento' || dataType === 'sinistralidade') {
-    // Normalize competencia date
     if (mappedData.competencia) {
       const normalized = normalizeDate(mappedData.competencia as string);
       if (normalized) {
@@ -383,7 +353,6 @@ function validateRow(
       }
     }
     
-    // Normalize categoria
     if (mappedData.categoria) {
       const cat = (mappedData.categoria as string).toLowerCase();
       if (cat.includes('sau') || cat.includes('med')) {
@@ -395,7 +364,6 @@ function validateRow(
       }
     }
     
-    // Convert numeric fields
     const numericFields = ['valor_total', 'valor_mensalidade', 'valor_coparticipacao', 'valor_reembolsos', 
                           'valor_premio', 'valor_sinistros', 'total_vidas', 'total_titulares', 'total_dependentes',
                           'quantidade_sinistros', 'sinistros_consultas', 'sinistros_exames', 'sinistros_internacoes',
@@ -413,29 +381,39 @@ function validateRow(
   return { status, errors, warnings, mappedData };
 }
 
-async function callAI(prompt: string, systemPrompt: string): Promise<{ content: string; tokensUsed: number }> {
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+async function callOpenAI(prompt: string, systemPrompt: string): Promise<{ content: string; tokensUsed: number }> {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY não configurada');
+  }
+  
+  console.log('Calling OpenAI API...');
+  
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt }
       ],
+      max_tokens: 1000,
+      temperature: 0.3,
     }),
   });
   
   if (!response.ok) {
     const error = await response.text();
-    console.error('AI API error:', error);
-    throw new Error(`AI API error: ${response.status}`);
+    console.error('OpenAI API error:', response.status, error);
+    throw new Error(`OpenAI API error: ${response.status}`);
   }
   
   const data = await response.json();
+  console.log('OpenAI response received, tokens:', data.usage?.total_tokens);
+  
   return {
     content: data.choices[0].message.content,
     tokensUsed: data.usage?.total_tokens || 0,
@@ -450,7 +428,7 @@ serve(async (req) => {
   const startTime = Date.now();
   
   try {
-    // Get authorization header
+    // 1. Validate Authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       console.error('No authorization header');
@@ -460,15 +438,14 @@ serve(async (req) => {
       });
     }
 
-    // Create Supabase client with user token for RLS
+    // 2. Create Supabase clients
     const supabaseUser = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
       global: { headers: { Authorization: authHeader } },
     });
     
-    // Service role client for admin operations
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Verify user and get their info
+    // 3. Verify user authentication
     const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
     if (userError || !user) {
       console.error('User auth error:', userError);
@@ -477,28 +454,59 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    console.log('User authenticated:', user.id);
 
-    // Check user roles
+    // 4. Check user roles - ONLY admin_vizio and admin_empresa allowed
     const { data: roles } = await supabaseAdmin
       .from('user_roles')
       .select('role')
       .eq('user_id', user.id);
     
     const userRoles = roles?.map(r => r.role) || [];
-    const isAdmin = userRoles.includes('admin_vizio') || userRoles.includes('admin_empresa');
+    const isAdminVizio = userRoles.includes('admin_vizio');
+    const isAdminEmpresa = userRoles.includes('admin_empresa');
     
-    if (!isAdmin) {
+    if (!isAdminVizio && !isAdminEmpresa) {
       console.error('User is not admin:', user.id, userRoles);
-      return new Response(JSON.stringify({ error: 'Acesso negado. Apenas administradores podem usar esta função.' }), {
+      return new Response(JSON.stringify({ error: 'Acesso negado. Apenas admin_vizio e admin_empresa podem usar esta função.' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    console.log('User roles verified:', userRoles);
 
-    const { action, jobId, empresaId, filePath, columnMapping: customMapping } = await req.json();
-    console.log('Request action:', action, 'jobId:', jobId, 'empresaId:', empresaId);
+    // 5. Parse request body
+    const { action, jobId, empresaId, filePath, columnMapping: customMapping, goal, rows } = await req.json();
+    console.log('Request:', { action, jobId, empresaId, goal: goal?.substring(0, 50) });
 
+    // 6. Validate empresa_id scope (multi-tenant security)
+    if (empresaId) {
+      if (!isAdminVizio) {
+        const { data: userProfile } = await supabaseAdmin
+          .from('profiles')
+          .select('empresa_id')
+          .eq('id', user.id)
+          .single();
+        
+        if (userProfile?.empresa_id !== empresaId) {
+          console.error('Empresa_id mismatch:', userProfile?.empresa_id, empresaId);
+          return new Response(JSON.stringify({ error: 'Você não tem acesso a esta empresa.' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+    }
+
+    // ACTION: analyze - Analyze uploaded file
     if (action === 'analyze') {
+      if (!filePath || !empresaId) {
+        return new Response(JSON.stringify({ error: 'filePath e empresaId são obrigatórios' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       // Download file from storage
       const { data: fileData, error: downloadError } = await supabaseAdmin.storage
         .from('imports')
@@ -512,25 +520,21 @@ serve(async (req) => {
         });
       }
 
-      // Parse CSV content
       const content = await fileData.text();
-      const { headers, rows } = parseCSV(content);
+      const { headers, rows: parsedRows } = parseCSV(content);
       
-      if (rows.length === 0) {
+      if (parsedRows.length === 0) {
         return new Response(JSON.stringify({ error: 'Arquivo vazio ou formato inválido' }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
-      // Detect data type
       const detectedDataType = detectDataType(headers);
-      console.log('Detected data type:', detectedDataType, 'Headers:', headers);
+      console.log('Detected data type:', detectedDataType, 'Rows:', parsedRows.length);
 
-      // Get column mapping
       const columnMapping = customMapping || mapColumns(headers, detectedDataType);
       
-      // Get existing CPFs for duplicate detection (beneficiarios only)
       let existingCPFs = new Set<string>();
       if (detectedDataType === 'beneficiarios') {
         const { data: existingBeneficiarios } = await supabaseAdmin
@@ -540,7 +544,6 @@ serve(async (req) => {
         existingCPFs = new Set(existingBeneficiarios?.map(b => normalizeCPF(b.cpf)) || []);
       }
 
-      // Validate rows and prepare staging data
       const stagingRows: Array<{
         row_number: number;
         status: string;
@@ -556,10 +559,9 @@ serve(async (req) => {
       let duplicateCount = 0;
       const seenCPFs = new Set<string>();
 
-      rows.forEach((row, index) => {
+      parsedRows.forEach((row, index) => {
         const result = validateRow(row, columnMapping, detectedDataType, existingCPFs);
         
-        // Check for duplicates within the file
         if (detectedDataType === 'beneficiarios' && result.mappedData.cpf) {
           const cpf = result.mappedData.cpf as string;
           if (seenCPFs.has(cpf)) {
@@ -590,12 +592,12 @@ serve(async (req) => {
         });
       });
 
-      // Generate AI summary
-      const sampleRows = rows.slice(0, 5);
+      // Generate AI summary using OpenAI
+      const sampleRows = parsedRows.slice(0, 5);
       const aiPrompt = `Analise estes dados de importação e forneça um resumo conciso em português:
       
 Tipo detectado: ${detectedDataType}
-Total de linhas: ${rows.length}
+Total de linhas: ${parsedRows.length}
 Linhas válidas: ${validCount}
 Linhas com avisos: ${warningCount}
 Linhas com erros: ${errorCount}
@@ -619,15 +621,15 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
       let tokensUsed = 0;
       
       try {
-        const aiResult = await callAI(aiPrompt, systemPrompt);
+        const aiResult = await callOpenAI(aiPrompt, systemPrompt);
         aiSummary = aiResult.content;
         tokensUsed = aiResult.tokensUsed;
       } catch (aiError) {
-        console.error('AI call error:', aiError);
-        aiSummary = `Resumo automático: ${rows.length} linhas detectadas como ${detectedDataType}. ${validCount} válidas, ${warningCount} com avisos, ${errorCount} com erros.`;
+        console.error('OpenAI call error:', aiError);
+        aiSummary = `Resumo automático: ${parsedRows.length} linhas detectadas como ${detectedDataType}. ${validCount} válidas, ${warningCount} com avisos, ${errorCount} com erros.`;
       }
 
-      // Create import job
+      // Create import job (staging only - no writes to final tables)
       const { data: job, error: jobError } = await supabaseAdmin
         .from('import_jobs')
         .insert({
@@ -636,7 +638,7 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
           status: 'ready_for_review',
           arquivo_url: filePath,
           arquivo_nome: filePath.split('/').pop(),
-          total_rows: rows.length,
+          total_rows: parsedRows.length,
           valid_rows: validCount,
           warning_rows: warningCount,
           error_rows: errorCount,
@@ -653,7 +655,7 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
         throw jobError;
       }
 
-      // Insert staging rows
+      // Insert staging rows (import_job_rows)
       const rowsToInsert = stagingRows.map(row => ({
         ...row,
         job_id: job.id,
@@ -673,20 +675,21 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
         job_id: job.id,
         empresa_id: empresaId,
         action: 'analyze_import',
-        input_summary: `Arquivo: ${filePath}, ${rows.length} linhas`,
+        input_summary: `Arquivo: ${filePath}, ${parsedRows.length} linhas`,
         output_summary: `Tipo: ${detectedDataType}, Válidas: ${validCount}, Avisos: ${warningCount}, Erros: ${errorCount}`,
-        model_used: 'google/gemini-2.5-flash',
+        model_used: 'gpt-4o-mini',
         tokens_used: tokensUsed,
         duration_ms: Date.now() - startTime,
         user_id: user.id,
       });
 
       return new Response(JSON.stringify({
+        ok: true,
         success: true,
         job,
         summary: {
           dataType: detectedDataType,
-          totalRows: rows.length,
+          totalRows: parsedRows.length,
           validRows: validCount,
           warningRows: warningCount,
           errorRows: errorCount,
@@ -699,8 +702,8 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
       });
     }
 
+    // ACTION: approve - Approve and insert data into final tables
     if (action === 'approve') {
-      // Get job details
       const { data: job, error: jobError } = await supabaseAdmin
         .from('import_jobs')
         .select('*, import_job_rows(*)')
@@ -715,12 +718,19 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
         });
       }
 
-      // Only process valid and warning rows
+      // Verify empresa_id scope
+      if (!isAdminVizio && job.empresa_id !== empresaId) {
+        return new Response(JSON.stringify({ error: 'Acesso negado a este job.' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       const rowsToProcess = job.import_job_rows.filter(
         (r: { status: string }) => r.status === 'valid' || r.status === 'warning'
       );
 
-      console.log(`Processing ${rowsToProcess.length} rows for job ${jobId}, data_type: ${job.data_type}`);
+      console.log(`Processing ${rowsToProcess.length} rows for job ${jobId}`);
 
       let insertedCount = 0;
       let updatedCount = 0;
@@ -735,7 +745,6 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
           };
 
           if (job.data_type === 'beneficiarios') {
-            // Upsert beneficiario by CPF
             const { data: existing } = await supabaseAdmin
               .from('beneficiarios')
               .select('id')
@@ -768,7 +777,6 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
         }
       }
 
-      // Update job status
       await supabaseAdmin
         .from('import_jobs')
         .update({
@@ -778,7 +786,6 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
         })
         .eq('id', jobId);
 
-      // Log audit
       await supabaseAdmin.from('ai_audit_logs').insert({
         job_id: jobId,
         empresa_id: job.empresa_id,
@@ -790,6 +797,7 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
       });
 
       return new Response(JSON.stringify({
+        ok: true,
         success: true,
         inserted: insertedCount,
         updated: updatedCount,
@@ -799,18 +807,78 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
       });
     }
 
+    // ACTION: reject - Reject/discard import job
     if (action === 'reject') {
       await supabaseAdmin
         .from('import_jobs')
         .update({ status: 'rejected' })
         .eq('id', jobId);
 
-      return new Response(JSON.stringify({ success: true }), {
+      await supabaseAdmin.from('ai_audit_logs').insert({
+        job_id: jobId,
+        empresa_id: empresaId,
+        action: 'reject_import',
+        input_summary: `Job ${jobId} rejeitado`,
+        output_summary: 'Importação descartada pelo usuário',
+        duration_ms: Date.now() - startTime,
+        user_id: user.id,
+      });
+
+      return new Response(JSON.stringify({ ok: true, success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    return new Response(JSON.stringify({ error: 'Ação inválida' }), {
+    // ACTION: chat - General AI chat for data analysis
+    if (action === 'chat' && goal) {
+      const chatPrompt = `Objetivo do usuário: ${goal}
+      
+${rows ? `Dados fornecidos:\n${JSON.stringify(rows.slice(0, 20), null, 2)}` : 'Nenhum dado fornecido.'}
+
+Por favor, ajude o usuário com seu objetivo de análise de dados.`;
+
+      const systemPrompt = `Você é um assistente especializado em análise de dados para gestão de benefícios corporativos.
+Você pode ajudar com:
+- Análise de dados de beneficiários, faturamento e sinistralidade
+- Preparação de dados para importação
+- Identificação de problemas e inconsistências
+- Sugestões de melhorias
+
+Sempre responda em português do Brasil de forma clara e objetiva.`;
+
+      let aiResponse = '';
+      let tokensUsed = 0;
+      
+      try {
+        const aiResult = await callOpenAI(chatPrompt, systemPrompt);
+        aiResponse = aiResult.content;
+        tokensUsed = aiResult.tokensUsed;
+      } catch (aiError) {
+        console.error('OpenAI chat error:', aiError);
+        aiResponse = 'Desculpe, não foi possível processar sua solicitação no momento. Por favor, tente novamente.';
+      }
+
+      await supabaseAdmin.from('ai_audit_logs').insert({
+        empresa_id: empresaId,
+        action: 'chat',
+        input_summary: goal.substring(0, 200),
+        output_summary: aiResponse.substring(0, 200),
+        model_used: 'gpt-4o-mini',
+        tokens_used: tokensUsed,
+        duration_ms: Date.now() - startTime,
+        user_id: user.id,
+      });
+
+      return new Response(JSON.stringify({
+        ok: true,
+        response: aiResponse,
+        tokensUsed,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify({ error: 'Ação inválida', ok: false }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -818,7 +886,7 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
   } catch (error: unknown) {
     console.error('Edge function error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Erro interno';
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    return new Response(JSON.stringify({ error: errorMessage, ok: false }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

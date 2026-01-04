@@ -17,6 +17,7 @@ import MovimentacaoVidas from "./pages/MovimentacaoVidas";
 import Demandas from "./pages/Demandas";
 import PromocaoSaude from "./pages/PromocaoSaude";
 import Configuracoes from "./pages/Configuracoes";
+import CentralImportacao from "./pages/CentralImportacao";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -117,6 +118,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <Configuracoes />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/central-importacao"
+                element={
+                  <ProtectedRoute>
+                    <CentralImportacao />
                   </ProtectedRoute>
                 }
               />

@@ -82,6 +82,63 @@ export type Database = {
           },
         ]
       }
+      ai_audit_logs: {
+        Row: {
+          action: string
+          created_at: string
+          duration_ms: number | null
+          empresa_id: string
+          id: string
+          input_summary: string | null
+          job_id: string | null
+          model_used: string | null
+          output_summary: string | null
+          tokens_used: number | null
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          duration_ms?: number | null
+          empresa_id: string
+          id?: string
+          input_summary?: string | null
+          job_id?: string | null
+          model_used?: string | null
+          output_summary?: string | null
+          tokens_used?: number | null
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          duration_ms?: number | null
+          empresa_id?: string
+          id?: string
+          input_summary?: string | null
+          job_id?: string | null
+          model_used?: string | null
+          output_summary?: string | null
+          tokens_used?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_audit_logs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_audit_logs_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "import_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       beneficiarios: {
         Row: {
           bairro: string | null
@@ -485,6 +542,127 @@ export type Database = {
           },
         ]
       }
+      import_job_rows: {
+        Row: {
+          created_at: string
+          duplicate_of: string | null
+          id: string
+          job_id: string
+          mapped_data: Json | null
+          original_data: Json
+          row_number: number
+          status: Database["public"]["Enums"]["import_row_status"]
+          validation_errors: Json | null
+          validation_warnings: Json | null
+        }
+        Insert: {
+          created_at?: string
+          duplicate_of?: string | null
+          id?: string
+          job_id: string
+          mapped_data?: Json | null
+          original_data: Json
+          row_number: number
+          status?: Database["public"]["Enums"]["import_row_status"]
+          validation_errors?: Json | null
+          validation_warnings?: Json | null
+        }
+        Update: {
+          created_at?: string
+          duplicate_of?: string | null
+          id?: string
+          job_id?: string
+          mapped_data?: Json | null
+          original_data?: Json
+          row_number?: number
+          status?: Database["public"]["Enums"]["import_row_status"]
+          validation_errors?: Json | null
+          validation_warnings?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_job_rows_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "import_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_jobs: {
+        Row: {
+          ai_suggestions: Json | null
+          ai_summary: string | null
+          aprovado_por: string | null
+          arquivo_nome: string
+          arquivo_url: string
+          column_mapping: Json | null
+          created_at: string
+          criado_por: string
+          data_aprovacao: string | null
+          data_type: Database["public"]["Enums"]["import_data_type"]
+          duplicate_rows: number | null
+          empresa_id: string
+          error_rows: number | null
+          id: string
+          status: Database["public"]["Enums"]["import_job_status"]
+          total_rows: number | null
+          updated_at: string
+          valid_rows: number | null
+          warning_rows: number | null
+        }
+        Insert: {
+          ai_suggestions?: Json | null
+          ai_summary?: string | null
+          aprovado_por?: string | null
+          arquivo_nome: string
+          arquivo_url: string
+          column_mapping?: Json | null
+          created_at?: string
+          criado_por: string
+          data_aprovacao?: string | null
+          data_type: Database["public"]["Enums"]["import_data_type"]
+          duplicate_rows?: number | null
+          empresa_id: string
+          error_rows?: number | null
+          id?: string
+          status?: Database["public"]["Enums"]["import_job_status"]
+          total_rows?: number | null
+          updated_at?: string
+          valid_rows?: number | null
+          warning_rows?: number | null
+        }
+        Update: {
+          ai_suggestions?: Json | null
+          ai_summary?: string | null
+          aprovado_por?: string | null
+          arquivo_nome?: string
+          arquivo_url?: string
+          column_mapping?: Json | null
+          created_at?: string
+          criado_por?: string
+          data_aprovacao?: string | null
+          data_type?: Database["public"]["Enums"]["import_data_type"]
+          duplicate_rows?: number | null
+          empresa_id?: string
+          error_rows?: number | null
+          id?: string
+          status?: Database["public"]["Enums"]["import_job_status"]
+          total_rows?: number | null
+          updated_at?: string
+          valid_rows?: number | null
+          warning_rows?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_jobs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       indicadores_saude: {
         Row: {
           acao_id: string
@@ -815,6 +993,21 @@ export type Database = {
         | "outro"
       categoria_beneficio: "saude" | "vida" | "odonto"
       grau_parentesco: "conjuge" | "filho" | "pai" | "mae" | "outro"
+      import_data_type:
+        | "beneficiarios"
+        | "faturamento"
+        | "sinistralidade"
+        | "movimentacoes"
+        | "contratos"
+      import_job_status:
+        | "pending"
+        | "processing"
+        | "ready_for_review"
+        | "approved"
+        | "rejected"
+        | "completed"
+        | "failed"
+      import_row_status: "valid" | "warning" | "error" | "duplicate" | "updated"
       prioridade_demanda: "baixa" | "media" | "alta" | "urgente"
       status_acao_saude:
         | "planejada"
@@ -991,6 +1184,23 @@ export const Constants = {
       ],
       categoria_beneficio: ["saude", "vida", "odonto"],
       grau_parentesco: ["conjuge", "filho", "pai", "mae", "outro"],
+      import_data_type: [
+        "beneficiarios",
+        "faturamento",
+        "sinistralidade",
+        "movimentacoes",
+        "contratos",
+      ],
+      import_job_status: [
+        "pending",
+        "processing",
+        "ready_for_review",
+        "approved",
+        "rejected",
+        "completed",
+        "failed",
+      ],
+      import_row_status: ["valid", "warning", "error", "duplicate", "updated"],
       prioridade_demanda: ["baixa", "media", "alta", "urgente"],
       status_acao_saude: [
         "planejada",

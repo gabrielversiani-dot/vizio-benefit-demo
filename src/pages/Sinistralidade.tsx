@@ -133,43 +133,54 @@ export default function Sinistralidade() {
     queryFn: async () => {
       if (!resumo.periodo_inicio || !resumo.periodo_fim) return [];
       
-      // A coluna competencia é do tipo DATE (YYYY-MM-DD), não texto
-      // Converter para formato completo de data
-      const inicioDate = resumo.periodo_inicio.slice(0, 7) + "-01"; // "YYYY-MM-01"
-      const fimDate = resumo.periodo_fim.slice(0, 7) + "-01"; // "YYYY-MM-01"
+      // A coluna competencia é do tipo DATE (YYYY-MM-DD)
+      const inicioDate = resumo.periodo_inicio.slice(0, 10); // "YYYY-MM-DD" completo
+      const fimDate = resumo.periodo_fim.slice(0, 10); // "YYYY-MM-DD" completo
       
       if (import.meta.env.DEV) {
         console.log("[sinistralidade-pdf-query] inicioDate:", inicioDate, "fimDate:", fimDate);
         console.log("[sinistralidade-pdf-query] empresaId:", empresaSelecionada);
-        console.log("[sinistralidade-pdf-query] import_job_id:", resumo.import_job_id);
+        console.log("[sinistralidade-pdf-query] import_job_id do indicador:", resumo.import_job_id);
       }
       
-      let query = supabase
+      // Primeiro, tentar buscar por import_job_id se existir
+      if (resumo.import_job_id) {
+        const { data: dataByJob, error: errorByJob } = await supabase
+          .from("sinistralidade")
+          .select("*")
+          .eq("empresa_id", empresaSelecionada)
+          .eq("import_job_id", resumo.import_job_id)
+          .order("competencia", { ascending: true });
+        
+        if (!errorByJob && dataByJob && dataByJob.length > 0) {
+          if (import.meta.env.DEV) {
+            console.log("[sinistralidade-pdf-periodo] Encontrados por import_job_id:", dataByJob.length);
+            console.log("[sinistralidade-pdf-periodo] competencias:", dataByJob.map(d => d.competencia));
+          }
+          return dataByJob as Sinistralidade[];
+        }
+        
+        if (import.meta.env.DEV) {
+          console.log("[sinistralidade-pdf-periodo] Nenhum dado por import_job_id, fazendo fallback por período");
+        }
+      }
+      
+      // Fallback: buscar por empresa + período (sem import_job_id)
+      const { data, error } = await supabase
         .from("sinistralidade")
         .select("*")
+        .eq("empresa_id", empresaSelecionada)
         .gte("competencia", inicioDate)
         .lte("competencia", fimDate)
         .order("competencia", { ascending: true });
       
-      if (empresaSelecionada) {
-        query = query.eq("empresa_id", empresaSelecionada);
-      }
-      
-      // IMPORTANTE: Só aplicar filtro import_job_id se ele existir e não for null
-      // Nunca fazer .eq("import_job_id", null) pois isso zera o resultado
-      if (resumo.import_job_id) {
-        query = query.eq("import_job_id", resumo.import_job_id);
-      }
-      
-      const { data, error } = await query;
       if (error) {
         console.error("[sinistralidade-pdf-periodo] Error:", error);
         throw error;
       }
       
       if (import.meta.env.DEV) {
-        console.log("[sinistralidade-pdf-periodo] periodo:", resumo.periodo_inicio, "→", resumo.periodo_fim);
-        console.log("[sinistralidade-pdf-periodo] import_job_id:", resumo.import_job_id);
+        console.log("[sinistralidade-pdf-periodo] Fallback por período:", resumo.periodo_inicio, "→", resumo.periodo_fim);
         console.log("[sinistralidade-pdf-periodo] competencias:", data?.map(d => d.competencia));
         console.log("[sinistralidade-pdf-periodo] count:", data?.length);
       }
@@ -238,6 +249,33 @@ export default function Sinistralidade() {
 
   // Chart data - Evolução mensal (sempre 12 meses)
   const evolucaoMensal = useMemo(() => {
+    // Debug: verificar dados de entrada
+    if (import.meta.env.DEV) {
+      console.log("[evolucaoMensal] filteredData count:", filteredData.length);
+      console.log("[evolucaoMensal] filteredData competências raw:", filteredData.map(s => s.competencia));
+    }
+    
+    // Função para normalizar competência para YYYY-MM
+    const normalizeCompetencia = (value: string): string => {
+      if (!value) return "";
+      const trimmed = value.trim();
+      // Se vier como "YYYY-MM-DD" (10 chars), pegar só YYYY-MM
+      if (trimmed.length >= 10 && trimmed[4] === '-' && trimmed[7] === '-') {
+        return trimmed.slice(0, 7);
+      }
+      // Se vier como "MM/YYYY", converter para YYYY-MM
+      if (trimmed.includes('/') && trimmed.length === 7) {
+        const [mes, ano] = trimmed.split('/');
+        return `${ano}-${mes.padStart(2, '0')}`;
+      }
+      // Se já vier como "YYYY-MM", retornar
+      if (trimmed.length === 7 && trimmed[4] === '-') {
+        return trimmed;
+      }
+      // Fallback: tentar extrair os primeiros 7 chars
+      return trimmed.slice(0, 7);
+    };
+    
     // 1. Criar mapa dos dados reais por competência (YYYY-MM)
     const dataByCompetencia: Record<string, { 
       premio: number; 
@@ -248,7 +286,7 @@ export default function Sinistralidade() {
     }> = {};
     
     filteredData.forEach(s => {
-      const comp = s.competencia.slice(0, 7); // YYYY-MM
+      const comp = normalizeCompetencia(s.competencia);
       if (!dataByCompetencia[comp]) {
         dataByCompetencia[comp] = { premio: 0, sinistros: 0, indice: 0, count: 0, indiceImportado: null };
       }
@@ -291,7 +329,9 @@ export default function Sinistralidade() {
         console.log("[evolucaoMensal] periodo_inicio:", resumo.periodo_inicio);
         console.log("[evolucaoMensal] periodo_fim:", resumo.periodo_fim);
         console.log("[evolucaoMensal] meses gerados:", mesesParaExibir);
-        console.log("[evolucaoMensal] competencias com dados:", Object.keys(dataByCompetencia).sort());
+        console.log("[evolucaoMensal] competencias com dados (keys):", Object.keys(dataByCompetencia).sort());
+        console.log("[evolucaoMensal] dados de 2024-12:", dataByCompetencia["2024-12"]);
+        console.log("[evolucaoMensal] dados completos:", dataByCompetencia);
       }
     } else {
       // Modo calculado: usar últimos 12 meses baseado no max competência ou mês atual

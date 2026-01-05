@@ -129,14 +129,53 @@ export function IndicadoresPeriodoSection({ empresaId }: IndicadoresPeriodoSecti
 
     setIsDeleting(true);
     try {
-      const { data, error } = await supabase.functions.invoke("delete-sinistralidade-periodo", {
-        body: {
-          indicadorId: selectedIndicador.id,
-          deleteMonthly,
-        },
-      });
+      // Get auth session
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
 
-      if (error) throw error;
+      if (!accessToken) {
+        throw new Error("Sessão expirada. Faça login novamente.");
+      }
+
+      // Use fetch directly instead of supabase.functions.invoke
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/delete-sinistralidade-periodo`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "apikey": supabaseKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            indicadorId: selectedIndicador.id,
+            deleteMonthly,
+          }),
+        }
+      );
+
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+
+      if (!response.ok) {
+        // Handle specific error codes
+        if (response.status === 401) {
+          throw new Error("Sessão expirada. Faça login novamente.");
+        } else if (response.status === 403) {
+          throw new Error(data?.message || "Sem permissão para excluir este indicador.");
+        } else if (response.status === 404) {
+          throw new Error(data?.message || "Indicador não encontrado.");
+        } else {
+          throw new Error(data?.message || `Erro ${response.status}: ${response.statusText}`);
+        }
+      }
 
       if (data?.ok) {
         toast.success("Indicador excluído com sucesso", {
@@ -159,9 +198,17 @@ export function IndicadoresPeriodoSection({ empresaId }: IndicadoresPeriodoSecti
       }
     } catch (err: any) {
       console.error("[IndicadoresPeriodoSection] Delete error:", err);
-      toast.error("Erro ao excluir indicador", {
-        description: err.message || "Tente novamente mais tarde",
-      });
+      
+      // Determine error type for user-friendly message
+      let errorMessage = "Erro ao excluir indicador";
+      let errorDescription = err.message || "Tente novamente mais tarde";
+
+      if (err.message?.includes("Failed to fetch") || err.name === "TypeError") {
+        errorMessage = "Falha de conexão";
+        errorDescription = "Não foi possível conectar ao servidor. Verifique sua conexão.";
+      }
+
+      toast.error(errorMessage, { description: errorDescription });
     } finally {
       setIsDeleting(false);
     }

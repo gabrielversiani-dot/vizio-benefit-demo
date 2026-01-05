@@ -381,13 +381,13 @@ export function ContratoFormModal({ open, onOpenChange, contrato, onSuccess }: P
             <div className="space-y-2">
               <Label>Filial (opcional)</Label>
               {!showNewFilial ? (
-                <div className="flex gap-2">
-                  <Select value={filialId} onValueChange={setFilialId}>
+              <div className="flex gap-2">
+                  <Select value={filialId || "_none"} onValueChange={(v) => setFilialId(v === "_none" ? "" : v)}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Nenhuma filial selecionada" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Nenhuma</SelectItem>
+                      <SelectItem value="_none">Nenhuma</SelectItem>
                       {filiais.map(f => (
                         <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
                       ))}

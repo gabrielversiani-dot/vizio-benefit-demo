@@ -163,36 +163,75 @@ export default function Sinistralidade() {
     return { totalPremio, totalSinistros, mediaSinistralidade, totalQuantidade, tendencia };
   }, [filteredData]);
 
-  // Chart data - Evolução mensal
+  // Chart data - Evolução mensal (sempre 12 meses)
   const evolucaoMensal = useMemo(() => {
-    const grouped: Record<string, { mes: string; premio: number; sinistros: number; indice: number; count: number; indiceImportado: number | null }> = {};
+    // 1. Criar mapa dos dados reais por competência (YYYY-MM)
+    const dataByCompetencia: Record<string, { 
+      premio: number; 
+      sinistros: number; 
+      indice: number; 
+      count: number; 
+      indiceImportado: number | null 
+    }> = {};
     
     filteredData.forEach(s => {
-      // Usar parseISO para evitar problemas de timezone/off-by-one
-      const dataCompetencia = parseISO(s.competencia);
-      const mes = format(dataCompetencia, "MMM/yy", { locale: ptBR });
-      if (!grouped[s.competencia]) {
-        grouped[s.competencia] = { mes, premio: 0, sinistros: 0, indice: 0, count: 0, indiceImportado: null };
+      const comp = s.competencia.slice(0, 7); // YYYY-MM
+      if (!dataByCompetencia[comp]) {
+        dataByCompetencia[comp] = { premio: 0, sinistros: 0, indice: 0, count: 0, indiceImportado: null };
       }
-      grouped[s.competencia].premio += Number(s.valor_premio);
-      grouped[s.competencia].sinistros += Number(s.valor_sinistros);
-      grouped[s.competencia].indice += Number(s.indice_sinistralidade || 0);
-      grouped[s.competencia].count += 1;
-      // Guardar o índice importado do PDF (se existir)
+      dataByCompetencia[comp].premio += Number(s.valor_premio);
+      dataByCompetencia[comp].sinistros += Number(s.valor_sinistros);
+      dataByCompetencia[comp].indice += Number(s.indice_sinistralidade || 0);
+      dataByCompetencia[comp].count += 1;
       if (s.indice_sinistralidade != null) {
-        grouped[s.competencia].indiceImportado = Number(s.indice_sinistralidade);
+        dataByCompetencia[comp].indiceImportado = Number(s.indice_sinistralidade);
       }
     });
 
-    return Object.entries(grouped)
-      .sort(([a], [b]) => parseISO(a).getTime() - parseISO(b).getTime())
-      .map(([, v]) => ({
-        mes: v.mes,
-        premio: v.premio,
-        sinistros: v.sinistros,
-        indice: v.count > 0 ? v.indice / v.count : 0,
-        indiceImportado: v.indiceImportado, // IU do PDF
-      }));
+    // 2. Determinar o mês final (max competência ou mês atual)
+    const competencias = Object.keys(dataByCompetencia).sort();
+    const hoje = new Date();
+    const mesAtualStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+    const mesFinal = competencias.length > 0 ? competencias[competencias.length - 1] : mesAtualStr;
+
+    // 3. Gerar lista de 12 meses consecutivos terminando no mês final
+    const [anoFinal, mesFinalNum] = mesFinal.split('-').map(Number);
+    const meses12: string[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(anoFinal, mesFinalNum - 1 - i, 1);
+      const comp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      meses12.push(comp);
+    }
+
+    // 4. Montar dataset normalizado (12 meses)
+    return meses12.map(comp => {
+      const dataReal = dataByCompetencia[comp];
+      const dataCompetencia = parseISO(`${comp}-01`);
+      const mesLabel = format(dataCompetencia, "MMM/yy", { locale: ptBR });
+      
+      if (dataReal) {
+        return {
+          competencia: comp,
+          mes: mesLabel,
+          premio: dataReal.premio,
+          sinistros: dataReal.sinistros,
+          indice: dataReal.count > 0 ? dataReal.indice / dataReal.count : 0,
+          indiceImportado: dataReal.indiceImportado,
+          hasData: true,
+        };
+      } else {
+        // Mês sem dados - usar null para não distorcer gráfico
+        return {
+          competencia: comp,
+          mes: mesLabel,
+          premio: null as number | null,
+          sinistros: null as number | null,
+          indice: null as number | null,
+          indiceImportado: null,
+          hasData: false,
+        };
+      }
+    });
   }, [filteredData]);
 
   // Chart data - Distribuição por tipo de sinistro
@@ -527,13 +566,30 @@ export default function Sinistralidade() {
                   <Tooltip
                     content={({ active, payload, label }) => {
                       if (!active || !payload || payload.length === 0) return null;
-                      const premio = payload.find((p) => p.dataKey === "premio")?.value as number | undefined;
-                      const sinistros = payload.find((p) => p.dataKey === "sinistros")?.value as number | undefined;
-                      // Usar o IU importado do PDF (indiceImportado) se disponível, senão calcular
-                      const indiceImportado = (payload[0]?.payload as { indiceImportado?: number | null })?.indiceImportado;
+                      const dataPoint = payload[0]?.payload as { 
+                        premio?: number | null; 
+                        sinistros?: number | null; 
+                        indiceImportado?: number | null;
+                        hasData?: boolean;
+                      } | undefined;
+                      
+                      // Se não há dados para este mês
+                      if (!dataPoint?.hasData) {
+                        return (
+                          <div className="rounded-lg border bg-background p-3 shadow-sm text-sm">
+                            <p className="font-medium mb-2">{label}</p>
+                            <p className="text-muted-foreground">Sem dados para este mês</p>
+                          </div>
+                        );
+                      }
+                      
+                      const premio = dataPoint.premio;
+                      const sinistros = dataPoint.sinistros;
+                      const indiceImportado = dataPoint.indiceImportado;
                       const iuCalculado = premio && premio > 0 ? ((sinistros ?? 0) / premio) * 100 : null;
                       const iu = indiceImportado != null ? indiceImportado : iuCalculado;
                       const isImportado = indiceImportado != null;
+                      
                       return (
                         <div className="rounded-lg border bg-background p-3 shadow-sm text-sm">
                           <p className="font-medium mb-2">{label}</p>
@@ -550,9 +606,9 @@ export default function Sinistralidade() {
                     }}
                   />
                   <Legend />
-                  <Area yAxisId="left" type="monotone" dataKey="premio" name="Prêmio" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} />
-                  <Area yAxisId="left" type="monotone" dataKey="sinistros" name="Sinistros" stroke="hsl(var(--chart-2))" fill="hsl(var(--chart-2))" fillOpacity={0.3} />
-                  <Line yAxisId="right" type="monotone" dataKey="indice" name="Índice %" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={{ r: 4 }} />
+                  <Area yAxisId="left" type="monotone" dataKey="premio" name="Prêmio" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} connectNulls={false} />
+                  <Area yAxisId="left" type="monotone" dataKey="sinistros" name="Sinistros" stroke="hsl(var(--chart-2))" fill="hsl(var(--chart-2))" fillOpacity={0.3} connectNulls={false} />
+                  <Line yAxisId="right" type="monotone" dataKey="indice" name="Índice %" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={{ r: 4 }} connectNulls={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </CardContent>

@@ -102,7 +102,7 @@ export default function Sinistralidade() {
     },
   });
 
-  // Fetch sinistralidade
+  // Fetch sinistralidade (modo calculado - últimos X meses)
   const { data: sinistralidade = [], isLoading } = useQuery({
     queryKey: ["sinistralidade", empresaSelecionada, periodoFilter],
     queryFn: async () => {
@@ -125,11 +125,60 @@ export default function Sinistralidade() {
     },
   });
 
+  // Fetch sinistralidade do período do PDF importado (quando kpiSource === "pdf_importado")
+  const { data: sinistralidade_pdf = [] } = useQuery({
+    queryKey: ["sinistralidade-pdf-periodo", empresaSelecionada, resumo.indicador_id, resumo.periodo_inicio, resumo.periodo_fim, resumo.import_job_id],
+    queryFn: async () => {
+      if (!resumo.periodo_inicio || !resumo.periodo_fim) return [];
+      
+      let query = supabase
+        .from("sinistralidade")
+        .select("*")
+        .gte("competencia", resumo.periodo_inicio)
+        .lte("competencia", resumo.periodo_fim)
+        .order("competencia", { ascending: true });
+      
+      if (empresaSelecionada) {
+        query = query.eq("empresa_id", empresaSelecionada);
+      }
+      
+      // Se tiver import_job_id, priorizar registros desse job
+      if (resumo.import_job_id) {
+        query = query.eq("import_job_id", resumo.import_job_id);
+      }
+      
+      const { data, error } = await query;
+      if (error) {
+        console.error("[sinistralidade-pdf-periodo] Error:", error);
+        throw error;
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log("[sinistralidade-pdf-periodo] periodo:", resumo.periodo_inicio, "→", resumo.periodo_fim);
+        console.log("[sinistralidade-pdf-periodo] import_job_id:", resumo.import_job_id);
+        console.log("[sinistralidade-pdf-periodo] competencias:", data?.map(d => d.competencia));
+        console.log("[sinistralidade-pdf-periodo] count:", data?.length);
+      }
+      
+      return data as Sinistralidade[];
+    },
+    enabled: !!empresaSelecionada && !!resumo.periodo_inicio && !!resumo.periodo_fim && kpiSource === "pdf_importado",
+    staleTime: 0,
+  });
+
+  // Selecionar dados do gráfico baseado no modo (PDF ou calculado)
+  const dadosGrafico = useMemo(() => {
+    if (kpiSource === "pdf_importado" && sinistralidade_pdf.length > 0) {
+      return sinistralidade_pdf;
+    }
+    return sinistralidade;
+  }, [kpiSource, sinistralidade_pdf, sinistralidade]);
+
   // Filter by empresa
   const filteredData = useMemo(() => {
-    if (empresaFilter === "todas") return sinistralidade;
-    return sinistralidade.filter(s => s.empresa_id === empresaFilter);
-  }, [sinistralidade, empresaFilter]);
+    if (empresaFilter === "todas") return dadosGrafico;
+    return dadosGrafico.filter(s => s.empresa_id === empresaFilter);
+  }, [dadosGrafico, empresaFilter]);
 
   // KPIs
   const kpis = useMemo(() => {
@@ -188,23 +237,55 @@ export default function Sinistralidade() {
       }
     });
 
-    // 2. Determinar o mês final (max competência ou mês atual)
-    const competencias = Object.keys(dataByCompetencia).sort();
-    const hoje = new Date();
-    const mesAtualStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
-    const mesFinal = competencias.length > 0 ? competencias[competencias.length - 1] : mesAtualStr;
-
-    // 3. Gerar lista de 12 meses consecutivos terminando no mês final
-    const [anoFinal, mesFinalNum] = mesFinal.split('-').map(Number);
-    const meses12: string[] = [];
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(anoFinal, mesFinalNum - 1 - i, 1);
-      const comp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      meses12.push(comp);
+    // 2. Determinar janela de meses baseado no modo
+    let mesesParaExibir: string[] = [];
+    
+    if (kpiSource === "pdf_importado" && resumo.periodo_inicio && resumo.periodo_fim) {
+      // Modo PDF: usar exatamente o período do indicador
+      const [anoInicio, mesInicio] = resumo.periodo_inicio.slice(0, 7).split('-').map(Number);
+      const [anoFim, mesFim] = resumo.periodo_fim.slice(0, 7).split('-').map(Number);
+      
+      let ano = anoInicio;
+      let mes = mesInicio;
+      while (ano < anoFim || (ano === anoFim && mes <= mesFim)) {
+        const comp = `${ano}-${String(mes).padStart(2, '0')}`;
+        mesesParaExibir.push(comp);
+        mes++;
+        if (mes > 12) {
+          mes = 1;
+          ano++;
+        }
+      }
+      
+      // Se tiver mais de 12 meses, pegar os últimos 12
+      if (mesesParaExibir.length > 12) {
+        mesesParaExibir = mesesParaExibir.slice(-12);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log("[evolucaoMensal] Modo PDF");
+        console.log("[evolucaoMensal] periodo_inicio:", resumo.periodo_inicio);
+        console.log("[evolucaoMensal] periodo_fim:", resumo.periodo_fim);
+        console.log("[evolucaoMensal] meses gerados:", mesesParaExibir);
+        console.log("[evolucaoMensal] competencias com dados:", Object.keys(dataByCompetencia).sort());
+      }
+    } else {
+      // Modo calculado: usar últimos 12 meses baseado no max competência ou mês atual
+      const competencias = Object.keys(dataByCompetencia).sort();
+      const hoje = new Date();
+      const mesAtualStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+      const mesFinal = competencias.length > 0 ? competencias[competencias.length - 1] : mesAtualStr;
+      
+      const [anoFinal, mesFinalNum] = mesFinal.split('-').map(Number);
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(anoFinal, mesFinalNum - 1 - i, 1);
+        const comp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        mesesParaExibir.push(comp);
+      }
     }
 
-    // 4. Montar dataset normalizado (12 meses)
-    return meses12.map(comp => {
+    // 3. Montar dataset normalizado
+    return mesesParaExibir.map(comp => {
       const dataReal = dataByCompetencia[comp];
       const dataCompetencia = parseISO(`${comp}-01`);
       const mesLabel = format(dataCompetencia, "MMM/yy", { locale: ptBR });
@@ -232,7 +313,7 @@ export default function Sinistralidade() {
         };
       }
     });
-  }, [filteredData]);
+  }, [filteredData, kpiSource, resumo.periodo_inicio, resumo.periodo_fim]);
 
   // Chart data - Distribuição por tipo de sinistro
   const distribuicaoTipo = useMemo(() => {

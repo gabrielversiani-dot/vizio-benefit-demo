@@ -29,6 +29,7 @@ type FaturamentoRow = {
   criado_por: string;
   created_at: string;
   updated_at: string;
+  empresas?: { nome: string } | null;
 };
 
 type Empresa = {
@@ -100,7 +101,7 @@ export default function Faturamento() {
     enabled: isAdminVizio,
   });
 
-  // Fetch faturamentos
+  // Fetch faturamentos with empresa name
   const { data: faturamentos = [], isLoading } = useQuery({
     queryKey: ["faturamentos", empresaSelecionada, periodoFilter],
     queryFn: async () => {
@@ -109,7 +110,7 @@ export default function Faturamento() {
       
       let query = supabase
         .from("faturamentos")
-        .select("*")
+        .select("*, empresas(nome)")
         .gte("competencia", mesesAtras.toISOString().split('T')[0])
         .order("competencia", { ascending: false })
         .order("vencimento", { ascending: false });
@@ -410,6 +411,7 @@ export default function Faturamento() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="hidden md:table-cell">Empresa</TableHead>
                   <TableHead>Competência</TableHead>
                   <TableHead>Produto</TableHead>
                   <TableHead>Vencimento</TableHead>
@@ -421,7 +423,7 @@ export default function Faturamento() {
               <TableBody>
                 {filteredData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       Nenhuma fatura encontrada com os filtros selecionados.
                     </TableCell>
                   </TableRow>
@@ -431,10 +433,15 @@ export default function Faturamento() {
                     const produtoInfo = produtoConfig[fatura.produto];
                     const StatusIcon = statusInfo?.icon || Clock;
                     const ProdutoIcon = produtoInfo?.icon || Heart;
+                    const empresaNome = fatura.empresas?.nome || "—";
 
                     return (
                       <TableRow key={fatura.id}>
+                        <TableCell className="hidden md:table-cell text-muted-foreground">
+                          {empresaNome}
+                        </TableCell>
                         <TableCell className="font-medium">
+                          <span className="md:hidden text-muted-foreground text-xs block">{empresaNome}</span>
                           {format(new Date(fatura.competencia), "MMM/yyyy", { locale: ptBR })}
                         </TableCell>
                         <TableCell>

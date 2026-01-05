@@ -1,19 +1,53 @@
 project_id = "cztfufjkowkdnaqmmiqq"
 
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 5432
+shadow_port = 5433
+major_version = 15
+
+[studio]
+enabled = true
+port = 5434
+api_url = "http://127.0.0.1"
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://127.0.0.1:3000"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[storage]
+enabled = true
+
 [functions.admin-data-agent]
-verify_jwt = false
-
-[functions.export-import-job]
-verify_jwt = false
-
-[functions.admin-create-users]
 verify_jwt = false
 
 [functions.admin-apply-setup]
 verify_jwt = false
 
+[functions.admin-create-users]
+verify_jwt = false
+
 [functions.sinistralidade-pdf-agent]
+verify_jwt = false
+
+[functions.export-import-job]
 verify_jwt = false
 
 [functions.ai-alertas-recomendacoes]
 verify_jwt = false
+
+[functions.delete-sinistralidade-periodo]
+verify_jwt = true

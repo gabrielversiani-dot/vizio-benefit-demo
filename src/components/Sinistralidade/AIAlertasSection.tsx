@@ -97,10 +97,10 @@ export function AIAlertasSection({
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Bloco IA "Em breve" */}
-        <div className="p-4 rounded-lg border border-dashed border-primary/30 bg-primary/5">
+        <div className="p-4 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30">
           <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Bot className="h-5 w-5 text-primary" />
+            <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+              <Bot className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
@@ -121,6 +121,7 @@ export function AIAlertasSection({
                 className="mt-3"
                 disabled={!aiEnabled || isGenerating}
                 onClick={handleGenerateAI}
+                title={!aiEnabled ? "Em breve" : undefined}
               >
                 {isGenerating ? (
                   <>
@@ -138,13 +139,8 @@ export function AIAlertasSection({
           </div>
         </div>
 
-        {/* Alertas estáticos (regras fixas) */}
-        {alertas.length === 0 ? (
-          <div className="text-center py-6">
-            <p className="text-muted-foreground">Nenhum alerta no momento</p>
-            <p className="text-sm text-muted-foreground">Indicadores dentro dos parâmetros</p>
-          </div>
-        ) : (
+        {/* Alertas estáticos - só exibir quando IA estiver habilitada */}
+        {aiEnabled && alertas.length > 0 && (
           <div className="space-y-3">
             {alertas.map((alerta, index) => (
               <div 
@@ -171,6 +167,13 @@ export function AIAlertasSection({
               </div>
             ))}
           </div>
+        )}
+
+        {/* Texto informativo quando IA desabilitada */}
+        {!aiEnabled && (
+          <p className="text-xs text-muted-foreground text-center pt-2">
+            Recomendações estarão disponíveis em breve.
+          </p>
         )}
       </CardContent>
     </Card>

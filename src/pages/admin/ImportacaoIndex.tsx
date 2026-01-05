@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Upload, FileText, Bot, Loader2, History, AlertCircle, CheckCircle, XCircle, Clock, Download, GitBranch } from "lucide-react";
 import { ImportTestGuide } from "@/components/Admin/ImportTestGuide";
+import { ReimportTestGuide } from "@/components/Admin/ReimportTestGuide";
 
 // CSV Templates
 const TEMPLATES = {
@@ -283,7 +284,10 @@ const ImportacaoIndex = () => {
           </CardContent>
         </Card>
 
-        {/* Test Guide */}
+        {/* E2E Reimport Test Guide (admin_vizio only) */}
+        <ReimportTestGuide />
+
+        {/* Basic Test Guide */}
         <ImportTestGuide />
 
         {/* Templates Section */}

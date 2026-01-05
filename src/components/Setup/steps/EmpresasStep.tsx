@@ -1,11 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Loader2, Save, AlertTriangle, Info } from "lucide-react";
+import { CheckCircle2, Loader2, Save, AlertTriangle, Info, Eye, FileCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { EditableGrid, GridColumn, GridRow } from "../EditableGrid";
+import { PreviewApplyModal, PreviewItem } from "../PreviewApplyModal";
+import { UndoBanner } from "../UndoBanner";
+import { useSetupDraft } from "@/hooks/useSetupDraft";
+import { useSetupUndo } from "@/hooks/useSetupUndo";
 
 interface EmpresasStepProps {
   onStatusUpdate: (status: { created: number; updated: number; errors: number }) => void;
@@ -15,11 +19,8 @@ interface EmpresasStepProps {
 const validateCNPJ = (cnpj: string): boolean => {
   const cleaned = cnpj.replace(/\D/g, '');
   if (cleaned.length !== 14) return false;
-  
-  // Check for repeated digits
   if (/^(\d)\1+$/.test(cleaned)) return false;
   
-  // Validate check digits
   let size = cleaned.length - 2;
   let numbers = cleaned.substring(0, size);
   const digits = cleaned.substring(size);
@@ -46,21 +47,6 @@ const validateCNPJ = (cnpj: string): boolean => {
   
   result = sum % 11 < 2 ? 0 : 11 - (sum % 11);
   return result === parseInt(digits.charAt(1));
-};
-
-const formatCNPJ = (value: string): string => {
-  const cleaned = value.replace(/\D/g, '').slice(0, 14);
-  return cleaned.replace(
-    /^(\d{2})(\d{3})?(\d{3})?(\d{4})?(\d{2})?/,
-    (_, p1, p2, p3, p4, p5) => {
-      let result = p1;
-      if (p2) result += '.' + p2;
-      if (p3) result += '.' + p3;
-      if (p4) result += '/' + p4;
-      if (p5) result += '-' + p5;
-      return result;
-    }
-  );
 };
 
 const columns: GridColumn[] = [
@@ -111,45 +97,119 @@ const columns: GridColumn[] = [
 export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
   const [rows, setRows] = useState<GridRow[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const [lastResult, setLastResult] = useState<{ created: number; updated: number; errors: number } | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [activeUndo, setActiveUndo] = useState<{ id: string; count: number; expiresAt: string } | null>(null);
+  
+  const { saveDraft, getStepDraft, isLoaded } = useSetupDraft();
+  const { createSnapshot, getSnapshot, removeSnapshot } = useSetupUndo();
 
-  const handleSave = async () => {
-    // Validate all rows first
-    const hasErrors = rows.some(row => Object.keys(row.errors).length > 0);
-    const hasEmptyRequired = rows.some(row => !row.data.nome?.trim() || !row.data.cnpj?.trim());
-
-    if (hasErrors || hasEmptyRequired) {
-      toast.error('Corrija os erros antes de salvar');
-      return;
+  // Load draft on mount
+  useEffect(() => {
+    if (isLoaded) {
+      const draftData = getStepDraft('empresas');
+      if (draftData.length > 0) {
+        setRows(draftData);
+        toast.info('Rascunho restaurado', { description: `${draftData.length} empresa(s)` });
+      }
     }
+  }, [isLoaded, getStepDraft]);
 
-    if (rows.length === 0) {
-      toast.info('Adicione pelo menos uma empresa');
-      return;
-    }
+  // Auto-save draft
+  const handleAutoSave = (updatedRows: GridRow[]) => {
+    saveDraft('empresas', updatedRows);
+  };
 
-    setIsSaving(true);
-    let created = 0;
-    let updated = 0;
-    let errors = 0;
-
+  // Validate all rows
+  const handleValidate = async () => {
+    setIsValidating(true);
+    const items: PreviewItem[] = [];
+    
     const updatedRows = [...rows];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const cnpj = row.data.cnpj.replace(/\D/g, '');
-      
+      updatedRows[i] = { ...row, status: 'validating' };
+      setRows([...updatedRows]);
+
+      // Check if has validation errors
+      if (Object.keys(row.errors).length > 0 || !row.data.nome?.trim() || !row.data.cnpj?.trim()) {
+        items.push({
+          identifier: row.data.cnpj || row.data.nome || `Linha ${i + 1}`,
+          action: 'error',
+          details: Object.values(row.errors).join(', ') || 'Campos obrigatórios não preenchidos',
+        });
+        updatedRows[i] = { ...row, status: 'error' };
+        continue;
+      }
+
+      // Check if exists in database
+      const { data: existing } = await supabase
+        .from('empresas')
+        .select('id, nome')
+        .eq('cnpj', row.data.cnpj)
+        .maybeSingle();
+
+      if (existing) {
+        items.push({
+          identifier: row.data.cnpj,
+          action: 'update',
+          details: `Atualizar "${existing.nome}" → "${row.data.nome}"`,
+        });
+        updatedRows[i] = { ...row, status: undefined };
+      } else {
+        items.push({
+          identifier: row.data.cnpj,
+          action: 'create',
+          details: row.data.nome,
+        });
+        updatedRows[i] = { ...row, status: undefined };
+      }
+    }
+
+    setRows(updatedRows);
+    setPreviewItems(items);
+    setIsValidating(false);
+    setShowPreview(true);
+  };
+
+  // Apply changes
+  const handleApply = async () => {
+    setIsSaving(true);
+    setProgress(0);
+    
+    let created = 0;
+    let updated = 0;
+    let errors = 0;
+    const updatedRows = [...rows];
+    const previousData: Record<string, any>[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      setProgress(Math.round(((i + 1) / rows.length) * 100));
+
+      if (Object.keys(row.errors).length > 0) {
+        errors++;
+        updatedRows[i] = { ...row, status: 'error' };
+        continue;
+      }
+
       try {
         // Check if exists
         const { data: existing } = await supabase
           .from('empresas')
-          .select('id')
+          .select('*')
           .eq('cnpj', row.data.cnpj)
           .maybeSingle();
 
         if (existing) {
+          // Store previous data for undo
+          previousData.push({ ...existing, _action: 'update' });
+          
           // Update
-          const { error } = await supabase
+          const { error: updateError } = await supabase
             .from('empresas')
             .update({
               nome: row.data.nome,
@@ -159,12 +219,12 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
             })
             .eq('id', existing.id);
 
-          if (error) throw error;
+          if (updateError) throw updateError;
           updated++;
           updatedRows[i] = { ...row, status: 'success' };
         } else {
           // Insert
-          const { error } = await supabase
+          const { data: inserted, error: insertError } = await supabase
             .from('empresas')
             .insert({
               nome: row.data.nome,
@@ -172,27 +232,34 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
               razao_social: row.data.razao_social || null,
               contato_email: row.data.contato_email || null,
               contato_telefone: row.data.contato_telefone || null,
-            });
+            })
+            .select()
+            .single();
 
-          if (error) throw error;
+          if (insertError) throw insertError;
+          
+          previousData.push({ id: inserted.id, _action: 'create' });
           created++;
           updatedRows[i] = { ...row, status: 'success' };
         }
       } catch (err: any) {
         console.error('Error saving empresa:', err);
         errors++;
-        updatedRows[i] = { 
-          ...row, 
-          status: 'error',
-          errors: { ...row.errors, _general: err.message }
-        };
+        updatedRows[i] = { ...row, status: 'error', errors: { ...row.errors, _general: err.message } };
       }
     }
 
     setRows(updatedRows);
-    setLastResult({ created, updated, errors });
     onStatusUpdate({ created, updated, errors });
     setIsSaving(false);
+    setShowPreview(false);
+
+    // Create undo snapshot
+    if (created + updated > 0) {
+      const snapshotId = createSnapshot('empresas', previousData, updatedRows.map(r => r.data));
+      const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+      setActiveUndo({ id: snapshotId, count: created + updated, expiresAt });
+    }
 
     if (errors === 0) {
       toast.success(`${created} criada(s), ${updated} atualizada(s)`);
@@ -201,13 +268,57 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
     }
   };
 
+  // Undo changes
+  const handleUndo = async () => {
+    if (!activeUndo) return;
+    
+    const snapshot = getSnapshot(activeUndo.id);
+    if (!snapshot) {
+      toast.error('Tempo para desfazer expirou');
+      setActiveUndo(null);
+      return;
+    }
+
+    setIsSaving(true);
+    
+    try {
+      for (const item of snapshot.previousData) {
+        if (item._action === 'create') {
+          // Delete created item
+          await supabase.from('empresas').delete().eq('id', item.id);
+        } else if (item._action === 'update') {
+          // Restore previous values
+          const { _action, ...data } = item;
+          await supabase.from('empresas').update(data).eq('id', data.id);
+        }
+      }
+      
+      toast.success('Alterações desfeitas com sucesso');
+      removeSnapshot(activeUndo.id);
+      setActiveUndo(null);
+      
+      // Reset row statuses
+      setRows(rows.map(r => ({ ...r, status: undefined })));
+      onStatusUpdate({ created: 0, updated: 0, errors: 0 });
+      
+    } catch (err: any) {
+      console.error('Undo error:', err);
+      toast.error('Erro ao desfazer: ' + err.message);
+    }
+    
+    setIsSaving(false);
+  };
+
+  const hasErrors = rows.some(row => Object.keys(row.errors).length > 0);
+  const hasEmptyRequired = rows.some(row => !row.data.nome?.trim() || !row.data.cnpj?.trim());
+
   return (
     <div className="space-y-6">
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
-          Cadastre as empresas que usarão o sistema. O CNPJ é a chave única - 
-          se já existir, os dados serão atualizados. Você pode colar linhas do Excel.
+          Cadastre as empresas do sistema. O CNPJ é a chave única - empresas existentes serão atualizadas.
+          Seu progresso é salvo automaticamente como rascunho.
         </AlertDescription>
       </Alert>
 
@@ -216,37 +327,67 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
         rows={rows}
         onRowsChange={setRows}
         emptyMessage="Nenhuma empresa. Clique em 'Adicionar' ou cole do Excel."
+        isSaving={isSaving}
+        progress={isSaving ? progress : undefined}
+        onAutoSave={handleAutoSave}
       />
 
       <Separator />
 
-      <div className="flex items-center justify-between">
-        {lastResult && (
-          <div className="flex items-center gap-2 text-sm">
-            {lastResult.errors === 0 ? (
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          {hasErrors && <span className="text-destructive">Corrija os erros antes de aplicar</span>}
+        </p>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={handleValidate} 
+            disabled={isSaving || isValidating || rows.length === 0}
+            className="gap-2"
+          >
+            {isValidating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <AlertTriangle className="h-4 w-4 text-destructive" />
+              <Eye className="h-4 w-4" />
             )}
-            <span>
-              Último salvamento: {lastResult.created} criada(s), {lastResult.updated} atualizada(s)
-              {lastResult.errors > 0 && `, ${lastResult.errors} erro(s)`}
-            </span>
-          </div>
-        )}
-        <Button 
-          onClick={handleSave} 
-          disabled={isSaving || rows.length === 0}
-          className="gap-2"
-        >
-          {isSaving ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          Salvar Empresas
-        </Button>
+            Validar e Revisar
+          </Button>
+          <Button 
+            onClick={handleValidate} 
+            disabled={isSaving || hasErrors || hasEmptyRequired || rows.length === 0}
+            className="gap-2"
+          >
+            <FileCheck className="h-4 w-4" />
+            Aplicar
+          </Button>
+        </div>
       </div>
+
+      {/* Preview Modal */}
+      <PreviewApplyModal
+        open={showPreview}
+        onOpenChange={setShowPreview}
+        title="Empresas"
+        items={previewItems}
+        onConfirm={handleApply}
+        isApplying={isSaving}
+      />
+
+      {/* Undo Banner */}
+      {activeUndo && (
+        <UndoBanner
+          snapshotId={activeUndo.id}
+          step="empresas"
+          itemCount={activeUndo.count}
+          expiresAt={activeUndo.expiresAt}
+          onUndo={handleUndo}
+          onDismiss={() => {
+            removeSnapshot(activeUndo.id);
+            setActiveUndo(null);
+          }}
+          isUndoing={isSaving}
+        />
+      )}
     </div>
   );
 }

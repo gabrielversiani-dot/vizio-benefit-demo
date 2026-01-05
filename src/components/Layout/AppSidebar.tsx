@@ -1,5 +1,6 @@
-import { LayoutDashboard, DollarSign, Activity, Users, FileText, Settings, Shield, FileSignature, RefreshCw, ClipboardList, Heart, Bot, FlaskConical } from "lucide-react";
+import { LayoutDashboard, DollarSign, Activity, Users, FileText, Settings, Shield, FileSignature, RefreshCw, ClipboardList, Heart, Bot, FlaskConical, Construction } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -22,7 +23,14 @@ const clientMenuItems = [
   { icon: FileText, label: "Relatórios", href: "/relatorios" },
 ];
 
-// Admin-only menu items
+// Modules "Em desenvolvimento" for clients
+const comingSoonItems = [
+  { icon: Users, label: "Beneficiários", href: "/coming-soon/beneficiarios" },
+  { icon: RefreshCw, label: "Movimentação de Vidas", href: "/coming-soon/movimentacao-vidas" },
+  { icon: ClipboardList, label: "Demandas", href: "/coming-soon/demandas" },
+];
+
+// Admin-only menu items (full access)
 const adminMenuItems = [
   { icon: Users, label: "Beneficiários", href: "/beneficiarios" },
   { icon: RefreshCw, label: "Movimentação de Vidas", href: "/movimentacao-vidas" },
@@ -87,6 +95,27 @@ export function AppSidebar() {
               </NavLink>
             </SidebarMenuItem>
           ))}
+
+          {/* Coming Soon items - only for non-admin (clients) */}
+          {!isAdmin && comingSoonItems.map((item) => (
+            <SidebarMenuItem key={item.href}>
+              <NavLink to={item.href}>
+                {({ isActive }) => (
+                  <SidebarMenuButton
+                    isActive={isActive}
+                    className="w-full justify-start gap-3 px-3 py-2.5"
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span className="flex-1">{item.label}</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-1 bg-muted/50">
+                      <Construction className="h-2.5 w-2.5" />
+                      Em breve
+                    </Badge>
+                  </SidebarMenuButton>
+                )}
+              </NavLink>
+            </SidebarMenuItem>
+          ))}
           
           {/* Super admin items (admin_vizio only) */}
           {isAdminVizio && superAdminItems.map((item) => (
@@ -107,7 +136,7 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
 
-      {/* Footer - Configurações only for those with permission */}
+      {/* Footer - Configurações for all with permission (including clients) */}
       {canViewConfiguracoes && (
         <SidebarFooter className="border-t border-sidebar-border p-4">
           <NavLink to="/configuracoes">

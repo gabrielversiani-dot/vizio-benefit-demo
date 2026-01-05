@@ -1,16 +1,18 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Bot, CheckCircle, XCircle, AlertTriangle, Loader2, FileText, Download } from "lucide-react";
+import { ArrowLeft, Bot, CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useDebounce } from "@/hooks/useDebounce";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
 import { ImportJobChecklist } from "@/components/Admin/ImportJobChecklist";
@@ -48,13 +50,22 @@ type ImportJobRow = {
   validation_warnings: string[] | null;
 };
 
+const PAGE_SIZE_OPTIONS = [25, 50, 100];
+
 const ImportacaoJobPreview = () => {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { empresaSelecionada, isAdminVizio } = useEmpresa();
+  
+  // Pagination and filter states
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
 
@@ -66,35 +77,69 @@ const ImportacaoJobPreview = () => {
         .from("import_jobs")
         .select("*")
         .eq("id", jobId)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
-      return data as ImportJob;
+      return data as ImportJob | null;
     },
     enabled: !!jobId,
   });
 
-  // Fetch job rows (first 50)
-  const { data: jobRows = [], isLoading: loadingRows } = useQuery({
-    queryKey: ["import-job-rows", jobId, statusFilter],
+  // Fetch job rows with server-side pagination
+  const { data: rowsResult, isLoading: loadingRows } = useQuery({
+    queryKey: ["import-job-rows", jobId, statusFilter, pageSize, currentPage, debouncedSearch],
     queryFn: async () => {
+      const from = (currentPage - 1) * pageSize;
+      const to = from + pageSize - 1;
+
       let query = supabase
         .from("import_job_rows")
-        .select("*")
+        .select("id, row_number, status, mapped_data, validation_errors, validation_warnings", { count: "exact" })
         .eq("job_id", jobId)
         .order("row_number")
-        .limit(50);
+        .range(from, to);
 
+      // Apply status filter
       if (statusFilter !== "all") {
         query = query.eq("status", statusFilter as "valid" | "warning" | "error" | "duplicate" | "updated");
       }
 
-      const { data, error } = await query;
+      // Apply search filter for beneficiarios
+      if (debouncedSearch && job?.data_type === "beneficiarios") {
+        const searchTerm = `%${debouncedSearch}%`;
+        query = query.or(`mapped_data->>cpf.ilike.${searchTerm},mapped_data->>nome_completo.ilike.${searchTerm}`);
+      }
+
+      const { data, error, count } = await query;
       if (error) throw error;
-      return data as ImportJobRow[];
+      return { rows: data as ImportJobRow[], totalCount: count || 0 };
     },
-    enabled: !!jobId,
+    enabled: !!jobId && !!job,
   });
+
+  const jobRows = rowsResult?.rows || [];
+  const totalCount = rowsResult?.totalCount || 0;
+  const totalPages = Math.ceil(totalCount / pageSize);
+
+  // Reset page when filters change
+  const handleStatusChange = (value: string) => {
+    setStatusFilter(value);
+    setCurrentPage(1);
+  };
+
+  const handlePageSizeChange = (value: string) => {
+    setPageSize(Number(value));
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  };
+
+  // Calculate display range
+  const fromItem = totalCount > 0 ? (currentPage - 1) * pageSize + 1 : 0;
+  const toItem = Math.min(currentPage * pageSize, totalCount);
 
   const handleApprove = async () => {
     if (!job) return;
@@ -340,20 +385,68 @@ const ImportacaoJobPreview = () => {
 
         {/* Data Preview */}
         <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Preview dos Dados</CardTitle>
-                <CardDescription>Primeiras 50 linhas (filtráveis por status)</CardDescription>
+          <CardHeader className="pb-4">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Preview dos Dados</CardTitle>
+                  <CardDescription>
+                    {totalCount > 0 
+                      ? `Mostrando ${fromItem}–${toItem} de ${totalCount} linhas`
+                      : "Nenhuma linha encontrada"}
+                  </CardDescription>
+                </div>
               </div>
-              <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-                <TabsList>
-                  <TabsTrigger value="all">Todos</TabsTrigger>
-                  <TabsTrigger value="valid">Válidos</TabsTrigger>
-                  <TabsTrigger value="warning">Avisos</TabsTrigger>
-                  <TabsTrigger value="error">Erros</TabsTrigger>
-                </TabsList>
-              </Tabs>
+              
+              {/* Filter Controls */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Status Filter */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Status:</span>
+                  <Select value={statusFilter} onValueChange={handleStatusChange}>
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="valid">Válidos</SelectItem>
+                      <SelectItem value="warning">Avisos</SelectItem>
+                      <SelectItem value="error">Erros</SelectItem>
+                      <SelectItem value="duplicate">Duplicados</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Page Size */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Por página:</span>
+                  <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                    <SelectTrigger className="w-[80px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAGE_SIZE_OPTIONS.map((size) => (
+                        <SelectItem key={size} value={String(size)}>
+                          {size}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Search */}
+                <div className="flex-1 min-w-[200px]">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder={job?.data_type === "beneficiarios" ? "Buscar por CPF ou Nome..." : "Buscar..."}
+                      value={searchQuery}
+                      onChange={(e) => handleSearchChange(e.target.value)}
+                      className="pl-8"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -363,58 +456,103 @@ const ImportacaoJobPreview = () => {
               </div>
             ) : jobRows.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                Nenhuma linha encontrada com este filtro
+                <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                <p>Nenhuma linha encontrada para os filtros atuais</p>
+                {(statusFilter !== "all" || searchQuery) && (
+                  <Button
+                    variant="link"
+                    className="mt-2"
+                    onClick={() => {
+                      setStatusFilter("all");
+                      setSearchQuery("");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Limpar filtros
+                  </Button>
+                )}
               </div>
             ) : (
-              <ScrollArea className="h-[400px] border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">#</TableHead>
-                      <TableHead className="w-24">Status</TableHead>
-                      <TableHead>Dados Mapeados</TableHead>
-                      <TableHead className="w-[300px]">Validação</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {jobRows.map((row) => (
-                      <TableRow 
-                        key={row.id} 
-                        className={row.status === 'error' ? 'bg-destructive/5' : row.status === 'warning' ? 'bg-yellow-50 dark:bg-yellow-950/20' : ''}
-                      >
-                        <TableCell className="font-mono text-sm">{row.row_number}</TableCell>
-                        <TableCell>{getRowStatusBadge(row.status)}</TableCell>
-                        <TableCell className="max-w-md">
-                          <div className="text-xs font-mono space-x-2 truncate">
-                            {Object.entries(row.mapped_data || {}).slice(0, 4).map(([k, v]) => (
-                              <span key={k}>
-                                <span className="text-muted-foreground">{k}:</span> {String(v)}
-                              </span>
-                            ))}
-                            {Object.keys(row.mapped_data || {}).length > 4 && (
-                              <span className="text-muted-foreground">...</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {row.validation_errors?.map((err, i) => (
-                              <Badge key={`err-${i}`} variant="destructive" className="text-xs">
-                                {err}
-                              </Badge>
-                            ))}
-                            {row.validation_warnings?.map((warn, i) => (
-                              <Badge key={`warn-${i}`} variant="secondary" className="text-xs">
-                                {warn}
-                              </Badge>
-                            ))}
-                          </div>
-                        </TableCell>
+              <>
+                <ScrollArea className="h-[400px] border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16">#</TableHead>
+                        <TableHead className="w-24">Status</TableHead>
+                        <TableHead>Dados Mapeados</TableHead>
+                        <TableHead className="w-[300px]">Validação</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
+                    </TableHeader>
+                    <TableBody>
+                      {jobRows.map((row) => (
+                        <TableRow 
+                          key={row.id} 
+                          className={row.status === 'error' ? 'bg-destructive/5' : row.status === 'warning' ? 'bg-yellow-50 dark:bg-yellow-950/20' : ''}
+                        >
+                          <TableCell className="font-mono text-sm">{row.row_number}</TableCell>
+                          <TableCell>{getRowStatusBadge(row.status)}</TableCell>
+                          <TableCell className="max-w-md">
+                            <div className="text-xs font-mono space-x-2 truncate">
+                              {Object.entries(row.mapped_data || {}).slice(0, 4).map(([k, v]) => (
+                                <span key={k}>
+                                  <span className="text-muted-foreground">{k}:</span> {String(v)}
+                                </span>
+                              ))}
+                              {Object.keys(row.mapped_data || {}).length > 4 && (
+                                <span className="text-muted-foreground">...</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {row.validation_errors?.map((err, i) => (
+                                <Badge key={`err-${i}`} variant="destructive" className="text-xs">
+                                  {err}
+                                </Badge>
+                              ))}
+                              {row.validation_warnings?.map((warn, i) => (
+                                <Badge key={`warn-${i}`} variant="secondary" className="text-xs">
+                                  {warn}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="text-sm text-muted-foreground">
+                      Página {currentPage} de {totalPages}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        Anterior
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        Próximo
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

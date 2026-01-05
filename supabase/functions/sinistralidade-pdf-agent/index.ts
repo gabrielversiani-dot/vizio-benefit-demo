@@ -140,6 +140,102 @@ interface ExtractedData {
   };
 }
 
+// Helper: Extract text content from various AI provider response formats
+function extractProviderText(resp: unknown): string {
+  if (!resp || typeof resp !== 'object') {
+    return typeof resp === 'string' ? resp : JSON.stringify(resp).slice(0, 6000);
+  }
+  
+  const r = resp as Record<string, unknown>;
+  
+  // OpenAI-like format
+  if (Array.isArray(r.choices) && r.choices[0]) {
+    const choice = r.choices[0] as Record<string, unknown>;
+    if (choice.message && typeof (choice.message as Record<string, unknown>).content === 'string') {
+      return (choice.message as Record<string, unknown>).content as string;
+    }
+    if (typeof choice.text === 'string') {
+      return choice.text;
+    }
+  }
+  
+  // Direct content
+  if (typeof r.output_text === 'string') return r.output_text;
+  if (typeof r.content === 'string') return r.content;
+  
+  // Gemini-like format
+  if (Array.isArray(r.candidates) && r.candidates[0]) {
+    const candidate = r.candidates[0] as Record<string, unknown>;
+    if (candidate.content && typeof candidate.content === 'object') {
+      const content = candidate.content as Record<string, unknown>;
+      if (Array.isArray(content.parts)) {
+        return content.parts
+          .map((p: unknown) => (p && typeof p === 'object' && 'text' in p) ? (p as { text: string }).text : '')
+          .join('');
+      }
+    }
+  }
+  
+  // Wrapped format
+  if (r.data && typeof r.data === 'object') {
+    return extractProviderText(r.data);
+  }
+  
+  // Fallback: stringify
+  return JSON.stringify(resp).slice(0, 6000);
+}
+
+// Helper: Parse JSON from AI response with tolerance for markdown and formatting
+function parseAiJson(content: string, requestId?: string): unknown {
+  let jsonStr = content.trim();
+  
+  // Try direct parse first
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    // Continue to cleanup attempts
+  }
+  
+  // Remove markdown code blocks
+  if (jsonStr.startsWith('```json')) {
+    jsonStr = jsonStr.slice(7);
+  } else if (jsonStr.startsWith('```')) {
+    jsonStr = jsonStr.slice(3);
+  }
+  if (jsonStr.endsWith('```')) {
+    jsonStr = jsonStr.slice(0, -3);
+  }
+  jsonStr = jsonStr.trim();
+  
+  // Try parse after markdown removal
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    // Continue to bracket extraction
+  }
+  
+  // Find first { and last } and try to parse
+  const firstBrace = jsonStr.indexOf('{');
+  const lastBrace = jsonStr.lastIndexOf('}');
+  
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const extracted = jsonStr.slice(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(extracted);
+    } catch {
+      // Failed
+    }
+  }
+  
+  // All attempts failed
+  const snippet = content.slice(0, 1200);
+  console.error('AI JSON parse failed. requestId:', requestId, 'snippet:', snippet);
+  throw createAIError('AI_JSON_PARSE_FAILED', 'Falha ao interpretar resposta da IA como JSON', {
+    requestId,
+    rawSnippet: snippet,
+  });
+}
+
 async function callLovableAIVision(pages: PageImage[]): Promise<{ content: string; tokensUsed: number }> {
   if (!LOVABLE_API_KEY) {
     throw createAIError('LOVABLE_AI_NOT_CONFIGURED', 'LOVABLE_API_KEY não configurada. Verifique as configurações do projeto.');
@@ -281,78 +377,86 @@ async function callLovableAIText(text: string): Promise<{ content: string; token
   };
 }
 
-function parseExtractedData(content: string): ExtractedData {
-  // Remove markdown code blocks if present
-  let jsonStr = content.trim();
-  if (jsonStr.startsWith('```json')) {
-    jsonStr = jsonStr.slice(7);
-  } else if (jsonStr.startsWith('```')) {
-    jsonStr = jsonStr.slice(3);
+function parseExtractedData(content: string, requestId?: string): ExtractedData {
+  // Use the robust JSON parser
+  const parsed = parseAiJson(content, requestId) as Record<string, unknown>;
+  
+  // Validate minimal structure
+  const result: ExtractedData = {
+    document_type: typeof parsed.document_type === 'string' ? parsed.document_type : 'unknown',
+    meta: {
+      operadora: 'Unimed Belo Horizonte',
+      empresa_nome: null,
+      produto: null,
+      periodo_inicio: null,
+      periodo_fim: null,
+    },
+    rows: [],
+    indicadores_periodo: { tipo: null, metricas: {}, quebras: {} },
+    validations: { errors: [], warnings: [] },
+    summary: { rows: 0, errors: 0, warnings: 0 },
+  };
+  
+  // Extract meta
+  if (parsed.meta && typeof parsed.meta === 'object') {
+    const meta = parsed.meta as Record<string, unknown>;
+    result.meta = {
+      operadora: typeof meta.operadora === 'string' ? meta.operadora : 'Unimed Belo Horizonte',
+      empresa_nome: typeof meta.empresa_nome === 'string' ? meta.empresa_nome : null,
+      produto: typeof meta.produto === 'string' ? meta.produto : null,
+      periodo_inicio: typeof meta.periodo_inicio === 'string' ? meta.periodo_inicio : null,
+      periodo_fim: typeof meta.periodo_fim === 'string' ? meta.periodo_fim : null,
+    };
   }
-  if (jsonStr.endsWith('```')) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
-  jsonStr = jsonStr.trim();
-
-  try {
-    const parsed = JSON.parse(jsonStr);
-    return parsed as ExtractedData;
-  } catch (e) {
-    console.error('Failed to parse AI response:', e);
-    console.error('Response content (first 2000 chars):', content.slice(0, 2000));
-    
-    // Try to salvage partial JSON by fixing common truncation issues
-    try {
-      // Try to find the last complete row and close the JSON properly
-      const rowsMatch = jsonStr.match(/"rows"\s*:\s*\[/);
-      if (rowsMatch) {
-        // Find all complete row objects
-        const completeRows: unknown[] = [];
-        const rowPattern = /\{[^{}]*"competencia"[^{}]*\}/g;
-        let match;
-        while ((match = rowPattern.exec(jsonStr)) !== null) {
-          try {
-            completeRows.push(JSON.parse(match[0]));
-          } catch {
-            // Skip incomplete rows
-          }
-        }
-        
-        if (completeRows.length > 0) {
-          console.log(`Salvaged ${completeRows.length} complete rows from truncated response`);
-          
-          // Extract meta if possible
-          const metaMatch = jsonStr.match(/"meta"\s*:\s*(\{[^}]+\})/);
-          const docTypeMatch = jsonStr.match(/"document_type"\s*:\s*"([^"]+)"/);
-          
-          return {
-            document_type: docTypeMatch ? docTypeMatch[1] : 'unknown',
-            meta: metaMatch ? JSON.parse(metaMatch[1]) : {
-              operadora: 'Unimed Belo Horizonte',
-              empresa_nome: null,
-              produto: null,
-              periodo_inicio: null,
-              periodo_fim: null,
-            },
-            rows: completeRows as ExtractedData['rows'],
-            indicadores_periodo: { tipo: null, metricas: {}, quebras: {} },
-            validations: {
-              errors: [],
-              warnings: ['Resposta da IA foi truncada. Alguns dados podem estar faltando.'],
-            },
-            summary: { rows: completeRows.length, errors: 0, warnings: 1 },
-          };
-        }
-      }
-    } catch (salvageError) {
-      console.error('Salvage attempt failed:', salvageError);
-    }
-    
-    throw createAIError('AI_PARSE_ERROR', 'Falha ao interpretar resposta da IA. A resposta pode ter sido truncada.', { 
-      originalError: e instanceof Error ? e.message : String(e),
-      responsePreview: content.slice(0, 500) 
+  
+  // Extract rows
+  if (Array.isArray(parsed.rows)) {
+    result.rows = parsed.rows.map((row: unknown) => {
+      const r = (row && typeof row === 'object') ? row as Record<string, unknown> : {};
+      return {
+        competencia: typeof r.competencia === 'string' ? r.competencia : null,
+        vidas: typeof r.vidas === 'number' ? r.vidas : null,
+        faturamento: typeof r.faturamento === 'number' ? r.faturamento : null,
+        sinistros: typeof r.sinistros === 'number' ? r.sinistros : null,
+        iu: typeof r.iu === 'number' ? r.iu : null,
+        observacoes: typeof r.observacoes === 'string' ? r.observacoes : null,
+        page_ref: typeof r.page_ref === 'string' ? r.page_ref : 'p1',
+      };
     });
   }
+  
+  // Extract indicadores_periodo
+  if (parsed.indicadores_periodo && typeof parsed.indicadores_periodo === 'object') {
+    const ind = parsed.indicadores_periodo as Record<string, unknown>;
+    result.indicadores_periodo = {
+      tipo: typeof ind.tipo === 'string' ? ind.tipo : null,
+      metricas: (ind.metricas && typeof ind.metricas === 'object') ? ind.metricas as Record<string, unknown> : {},
+      quebras: (ind.quebras && typeof ind.quebras === 'object') ? ind.quebras as Record<string, unknown> : {},
+    };
+  }
+  
+  // Extract validations
+  if (parsed.validations && typeof parsed.validations === 'object') {
+    const val = parsed.validations as Record<string, unknown>;
+    result.validations = {
+      errors: Array.isArray(val.errors) ? val.errors.filter((e): e is string => typeof e === 'string') : [],
+      warnings: Array.isArray(val.warnings) ? val.warnings.filter((w): w is string => typeof w === 'string') : [],
+    };
+  }
+  
+  // Extract summary
+  if (parsed.summary && typeof parsed.summary === 'object') {
+    const sum = parsed.summary as Record<string, unknown>;
+    result.summary = {
+      rows: typeof sum.rows === 'number' ? sum.rows : result.rows.length,
+      errors: typeof sum.errors === 'number' ? sum.errors : 0,
+      warnings: typeof sum.warnings === 'number' ? sum.warnings : 0,
+    };
+  } else {
+    result.summary.rows = result.rows.length;
+  }
+  
+  return result;
 }
 
 function validateExtractedRow(row: ExtractedData['rows'][0], index: number): { errors: string[]; warnings: string[] } {
@@ -497,7 +601,7 @@ serve(async (req) => {
         } else {
           const { content, tokensUsed: t } = await callLovableAIText(extractedText);
           tokensUsed = t;
-          extractedData = parseExtractedData(content);
+          extractedData = parseExtractedData(content, requestId);
         }
       } else {
         if (!pages || pages.length === 0) {
@@ -512,7 +616,7 @@ serve(async (req) => {
         tokensUsed = t;
 
         // Parse extracted data
-        extractedData = parseExtractedData(content);
+        extractedData = parseExtractedData(content, requestId);
       }
 
       // Ensure validation containers

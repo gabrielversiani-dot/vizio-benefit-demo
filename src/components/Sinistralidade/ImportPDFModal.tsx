@@ -307,6 +307,12 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
               description: "Recarregue seu saldo em Settings → Cloud & AI balance.",
               variant: "destructive"
             });
+          } else if (errorData.code === 'AI_JSON_PARSE_FAILED') {
+            toast({
+              title: "Falha ao interpretar resposta da IA",
+              description: "A IA retornou dados em formato inválido. Tente novamente.",
+              variant: "destructive"
+            });
           } else {
             toast({
               title: "Erro na análise",

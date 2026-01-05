@@ -42,6 +42,7 @@ import {
   DollarSign
 } from "lucide-react";
 import { useState } from "react";
+import { SinistroDetailModal } from "@/components/SinistrosVida/SinistroDetailModal";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
@@ -70,6 +71,8 @@ const CHART_COLORS = ['#ef4444', '#f97316', '#eab308', '#8b5cf6', '#22c55e'];
 export default function SinistrosVida() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedSinistro, setSelectedSinistro] = useState<any>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const { empresaSelecionada, isAdminVizio } = useEmpresa();
 
   // Fetch sinistros from database
@@ -492,7 +495,15 @@ export default function SinistrosVida() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" className="gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="gap-2"
+                            onClick={() => {
+                              setSelectedSinistro(sinistro);
+                              setIsDetailOpen(true);
+                            }}
+                          >
                             <FileText className="h-4 w-4" />
                             Detalhes
                           </Button>
@@ -505,6 +516,14 @@ export default function SinistrosVida() {
             )}
           </CardContent>
         </Card>
+
+        {/* Detail Modal with Documents */}
+        <SinistroDetailModal
+          sinistro={selectedSinistro}
+          open={isDetailOpen}
+          onOpenChange={setIsDetailOpen}
+          canEdit={isAdminVizio}
+        />
       </div>
     </AppLayout>
   );

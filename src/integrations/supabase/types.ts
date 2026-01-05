@@ -996,6 +996,57 @@ export type Database = {
           },
         ]
       }
+      sinistro_documentos: {
+        Row: {
+          created_at: string
+          empresa_id: string
+          id: string
+          nome_arquivo: string
+          sinistro_id: string
+          storage_path: string
+          tamanho: number
+          tipo_mime: string
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          empresa_id: string
+          id?: string
+          nome_arquivo: string
+          sinistro_id: string
+          storage_path: string
+          tamanho: number
+          tipo_mime: string
+          uploaded_by: string
+        }
+        Update: {
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          nome_arquivo?: string
+          sinistro_id?: string
+          storage_path?: string
+          tamanho?: number
+          tipo_mime?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sinistro_documentos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sinistro_documentos_sinistro_id_fkey"
+            columns: ["sinistro_id"]
+            isOneToOne: false
+            referencedRelation: "sinistros_vida"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sinistros_vida: {
         Row: {
           beneficiario_cpf: string | null

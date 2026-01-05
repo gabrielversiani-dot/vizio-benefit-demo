@@ -22,18 +22,95 @@ interface Props {
   dataType: string;
   errorRows: number;
   warningRows: number;
-  onExportErrors: () => void;
 }
 
 type Step = 1 | 2 | 3;
 
-export function ReimportModal({ jobId, empresaId, dataType, errorRows, warningRows, onExportErrors }: Props) {
+// Supabase Edge Function URL
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+export function ReimportModal({ jobId, empresaId, dataType, errorRows, warningRows }: Props) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  // Export errors/warnings using edge function
+  const handleExportErrors = async () => {
+    setExporting(true);
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData?.session) {
+        throw new Error("Sessão não encontrada");
+      }
+
+      const accessToken = sessionData.session.access_token;
+      const functionUrl = `${SUPABASE_URL}/functions/v1/export-import-job`;
+
+      // Export only error and warning rows
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'apikey': SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          jobId, 
+          statusFilter: 'error,warning', // Export both errors and warnings
+          searchQuery: '' 
+        }),
+      });
+
+      if (!response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (contentType?.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Erro ${response.status}`);
+        }
+        throw new Error(`Erro ${response.status}`);
+      }
+
+      // Get filename from Content-Disposition header
+      let filename = `erros_avisos_${new Date().toISOString().slice(0, 10)}.csv`;
+      const contentDisposition = response.headers.get('content-disposition');
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Exportação concluída!",
+        description: `Arquivo "${filename}" baixado. Corrija e continue.`,
+      });
+
+      setCurrentStep(2);
+    } catch (error) {
+      toast({
+        title: "Erro na exportação",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -182,9 +259,18 @@ export function ReimportModal({ jobId, empresaId, dataType, errorRows, warningRo
                   <Badge variant="destructive">{errorRows} erros</Badge>
                   <Badge variant="secondary">{warningRows} avisos</Badge>
                 </div>
-                <Button onClick={() => { onExportErrors(); setCurrentStep(2); }}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Exportar e Continuar
+                <Button onClick={handleExportErrors} disabled={exporting}>
+                  {exporting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Exportando...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar Erros e Avisos
+                    </>
+                  )}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground text-center">

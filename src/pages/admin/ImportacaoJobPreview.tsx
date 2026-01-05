@@ -584,26 +584,34 @@ const ImportacaoJobPreview = () => {
           </CardContent>
         </Card>
 
+        {/* Reimport button - show for ready_for_review or completed with errors/warnings */}
+        {(job.status === "ready_for_review" || job.status === "completed") && 
+         (job.error_rows > 0 || job.warning_rows > 0) && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-muted-foreground">
+                  {job.error_rows > 0 && <span className="text-destructive font-medium">{job.error_rows} erros</span>}
+                  {job.error_rows > 0 && job.warning_rows > 0 && " e "}
+                  {job.warning_rows > 0 && <span className="text-yellow-600 font-medium">{job.warning_rows} avisos</span>}
+                  {" "}podem ser corrigidos e reimportados
+                </div>
+                <ReimportModal
+                  jobId={job.id}
+                  empresaId={job.empresa_id}
+                  dataType={job.data_type}
+                  errorRows={job.error_rows}
+                  warningRows={job.warning_rows}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Action Buttons */}
         {job.status === "ready_for_review" && (
           <Card>
             <CardContent className="pt-6 space-y-4">
-              {/* Reimport button (when there are errors/warnings) */}
-              {(job.error_rows > 0 || job.warning_rows > 0) && (
-                <div className="flex justify-end">
-                  <ReimportModal
-                    jobId={job.id}
-                    empresaId={job.empresa_id}
-                    dataType={job.data_type}
-                    errorRows={job.error_rows}
-                    warningRows={job.warning_rows}
-                    onExportErrors={() => {
-                      // Trigger filtered export with error status
-                      handleStatusChange("error");
-                    }}
-                  />
-                </div>
-              )}
               <div className="flex gap-4">
                 <AlertDialog>
                   <AlertDialogTrigger asChild>

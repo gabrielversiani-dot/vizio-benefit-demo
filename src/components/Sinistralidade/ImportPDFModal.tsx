@@ -14,13 +14,7 @@ import { Upload, FileText, Loader2, CheckCircle, AlertTriangle, XCircle, Sparkle
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Configure PDF.js worker using local module (Vite-compatible)
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).toString();
+import { pdfjsLib } from "@/lib/pdfjs";
 
 interface Empresa {
   id: string;

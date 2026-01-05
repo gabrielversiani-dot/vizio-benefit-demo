@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Info, RefreshCw, Eye, Save } from "lucide-react";
+import { Loader2, Info, RefreshCw, Eye, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { EditableGrid, GridColumn, GridRow } from "../EditableGrid";
 import { PreviewApplyModal, PreviewItem } from "../PreviewApplyModal";
 import { UndoBanner } from "../UndoBanner";
+import { AIAssistantModal } from "../AIAssistantModal";
 import { useSetupDraft } from "@/hooks/useSetupDraft";
 import { useSetupUndo } from "@/hooks/useSetupUndo";
 
@@ -25,6 +26,7 @@ export function PerfisStep({ onStatusUpdate }: PerfisStepProps) {
   const [progress, setProgress] = useState(0);
   const [empresas, setEmpresas] = useState<{ cnpj: string; id: string; nome: string }[]>([]);
   const [activeUndo, setActiveUndo] = useState<{ id: string; count: number; expiresAt: string } | null>(null);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
   
   const { saveDraft, getStepDraft, isLoaded } = useSetupDraft();
   const { createSnapshot, getSnapshot, removeSnapshot } = useSetupUndo();
@@ -91,6 +93,52 @@ export function PerfisStep({ onStatusUpdate }: PerfisStepProps) {
 
   const handleAutoSave = (updatedRows: GridRow[]) => {
     saveDraft('perfis', updatedRows);
+  };
+
+  // Handle AI parsed data
+  const handleAIParsed = (parsedRows: Record<string, any>[]) => {
+    const newRows: GridRow[] = parsedRows.map(() => ({
+      id: crypto.randomUUID(),
+      data: {},
+      errors: {},
+    }));
+    
+    parsedRows.forEach((data, i) => {
+      newRows[i].data = data;
+      columns.forEach(col => {
+        if (col.validate) {
+          const error = col.validate(data[col.key] || '');
+          if (error) newRows[i].errors[col.key] = error;
+        }
+      });
+    });
+    
+    setRows(prev => [...prev, ...newRows]);
+  };
+
+  const handleAICorrections = (corrections: Array<{ row: number; field: string; value: string }>) => {
+    setRows(prev => {
+      const updated = [...prev];
+      corrections.forEach(c => {
+        if (updated[c.row]) {
+          updated[c.row] = {
+            ...updated[c.row],
+            data: { ...updated[c.row].data, [c.field]: c.value },
+          };
+          const col = columns.find(col => col.key === c.field);
+          if (col?.validate) {
+            const error = col.validate(c.value);
+            if (error) {
+              updated[c.row].errors = { ...updated[c.row].errors, [c.field]: error };
+            } else {
+              const { [c.field]: _, ...rest } = updated[c.row].errors;
+              updated[c.row].errors = rest;
+            }
+          }
+        }
+      });
+      return updated;
+    });
   };
 
   const loadExistingProfiles = async () => {
@@ -354,9 +402,17 @@ export function PerfisStep({ onStatusUpdate }: PerfisStepProps) {
       <Separator />
 
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          {hasErrors && <span className="text-destructive">Corrija os erros antes de aplicar</span>}
-        </p>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline"
+            onClick={() => setShowAIAssistant(true)}
+            className="gap-2"
+          >
+            <Sparkles className="h-4 w-4" />
+            Assistente IA
+          </Button>
+          {hasErrors && <span className="text-sm text-destructive">Corrija os erros antes de aplicar</span>}
+        </div>
         <div className="flex gap-2">
           <Button 
             variant="outline"
@@ -405,6 +461,15 @@ export function PerfisStep({ onStatusUpdate }: PerfisStepProps) {
           isUndoing={isSaving}
         />
       )}
+
+      <AIAssistantModal
+        open={showAIAssistant}
+        onOpenChange={setShowAIAssistant}
+        step="perfis"
+        currentRows={rows}
+        onApplyParsed={handleAIParsed}
+        onApplyCorrections={handleAICorrections}
+      />
     </div>
   );
 }

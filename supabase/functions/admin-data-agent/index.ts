@@ -1037,6 +1037,298 @@ Sempre responda em português do Brasil de forma clara e objetiva.`;
       });
     }
 
+    // ACTION: setup_parse - Parse pasted text for Setup Wizard
+    if (action === 'setup_parse') {
+      const { step, pastedText } = await req.json().catch(() => ({}));
+      
+      if (!step || !pastedText) {
+        return new Response(JSON.stringify({ error: 'step e pastedText são obrigatórios' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const STEP_SCHEMAS: Record<string, { columns: string[]; description: string; validations: string }> = {
+        empresas: {
+          columns: ['nome', 'cnpj', 'razao_social', 'contato_email', 'contato_telefone'],
+          description: 'Cadastro de empresas clientes. CNPJ é a chave única.',
+          validations: `
+            - nome: obrigatório, texto
+            - cnpj: obrigatório, formato XX.XXX.XXX/XXXX-XX ou apenas números (14 dígitos)
+            - razao_social: opcional, texto
+            - contato_email: opcional, email válido
+            - contato_telefone: opcional, formato (XX) XXXXX-XXXX ou similar
+          `,
+        },
+        usuarios: {
+          columns: ['email', 'nome_completo'],
+          description: 'Cadastro de usuários para autenticação. NUNCA retorne senhas.',
+          validations: `
+            - email: obrigatório, email válido
+            - nome_completo: obrigatório, texto
+            - senha: NÃO PROCESSAR. Indicar que deve ser preenchida manualmente.
+          `,
+        },
+        perfis: {
+          columns: ['email', 'empresa_cnpj', 'cargo', 'telefone'],
+          description: 'Vinculação de usuários a empresas e dados de perfil.',
+          validations: `
+            - email: obrigatório, email válido
+            - empresa_cnpj: obrigatório, CNPJ da empresa vinculada
+            - cargo: opcional, texto
+            - telefone: opcional, formato (XX) XXXXX-XXXX
+          `,
+        },
+        roles: {
+          columns: ['email', 'role'],
+          description: 'Atribuição de funções/permissões aos usuários.',
+          validations: `
+            - email: obrigatório, email válido
+            - role: obrigatório, um de: admin_vizio, admin_empresa, rh_gestor, visualizador
+          `,
+        },
+      };
+
+      const schema = STEP_SCHEMAS[step];
+      if (!schema) {
+        return new Response(JSON.stringify({ error: 'Step inválido' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Get context for validation
+      let contextData: Record<string, unknown> = {};
+      
+      if (step === 'perfis' || step === 'roles') {
+        const { data: profiles } = await supabaseAdmin
+          .from('profiles')
+          .select('email, id')
+          .limit(200);
+        contextData.existingEmails = profiles?.map(p => p.email) || [];
+      }
+      
+      if (step === 'perfis') {
+        const { data: empresas } = await supabaseAdmin
+          .from('empresas')
+          .select('cnpj, nome')
+          .limit(200);
+        contextData.existingEmpresas = empresas?.map(e => ({ cnpj: e.cnpj, nome: e.nome })) || [];
+      }
+
+      const systemPrompt = `Você é um assistente de parseamento de dados para um sistema de gestão de benefícios.
+Sua tarefa é analisar texto colado pelo usuário e convertê-lo em dados estruturados.
+
+REGRAS IMPORTANTES:
+1. NUNCA processe, armazene ou retorne senhas. Se encontrar algo que pareça senha, ignore e deixe em branco.
+2. Normalize CNPJs para o formato com pontuação (XX.XXX.XXX/XXXX-XX)
+3. Normalize telefones para o formato (XX) XXXXX-XXXX
+4. Emails devem ser validados e em minúsculas
+5. Se uma coluna não puder ser mapeada com certeza, indique ambiguidade
+6. Retorne APENAS JSON válido no formato especificado
+
+ESQUEMA DA ETAPA "${step.toUpperCase()}":
+Colunas: ${schema.columns.join(', ')}
+Descrição: ${schema.description}
+Validações: ${schema.validations}`;
+
+      const userPrompt = `Analise o seguinte texto colado e converta para o formato estruturado:
+
+TEXTO COLADO:
+${pastedText}
+
+${Object.keys(contextData).length > 0 ? `
+CONTEXTO DO SISTEMA:
+${JSON.stringify(contextData, null, 2)}
+` : ''}
+
+Retorne um JSON no formato:
+{
+  "parsedRows": [
+    { ${schema.columns.filter(c => c !== 'senha').map(c => `"${c}": "valor"`).join(', ')} }
+  ],
+  "columnMapping": {
+    "coluna_original": "coluna_sistema"
+  },
+  "validations": [
+    { "row": 0, "field": "campo", "type": "error|warning", "message": "mensagem" }
+  ],
+  "suggestions": [
+    "Sugestão 1"
+  ],
+  "ambiguities": [
+    { "column": "nome_original", "possibleMappings": ["campo1", "campo2"], "question": "Essa coluna é X ou Y?" }
+  ]
+}
+
+IMPORTANTE: Se houver dados que pareçam senhas, NÃO inclua nos parsedRows. Adicione uma sugestão indicando que senhas devem ser inseridas manualmente.`;
+
+      try {
+        const aiResult = await callOpenAI(userPrompt, systemPrompt);
+        let parsedResult;
+        
+        try {
+          // Try to extract JSON from response
+          const jsonMatch = aiResult.content.match(/\{[\s\S]*\}/);
+          parsedResult = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(aiResult.content);
+        } catch {
+          console.error('Failed to parse AI response:', aiResult.content);
+          return new Response(JSON.stringify({ error: 'Resposta inválida da IA' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        await supabaseAdmin.from('ai_audit_logs').insert({
+          empresa_id: empresaId || '00000000-0000-0000-0000-000000000000',
+          action: `setup_parse_${step}`,
+          input_summary: pastedText.substring(0, 200),
+          output_summary: JSON.stringify(parsedResult).substring(0, 500),
+          model_used: 'gpt-4o-mini',
+          tokens_used: aiResult.tokensUsed,
+          duration_ms: Date.now() - startTime,
+          user_id: user.id,
+        });
+
+        return new Response(JSON.stringify({ ok: true, ...parsedResult }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } catch (aiError) {
+        console.error('OpenAI parse error:', aiError);
+        return new Response(JSON.stringify({ error: 'Erro ao processar com IA' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // ACTION: setup_suggest - Suggest corrections for Setup Wizard data
+    if (action === 'setup_suggest') {
+      const { step, currentRows: suggestRows } = await req.json().catch(() => ({}));
+      
+      if (!step || !suggestRows || suggestRows.length === 0) {
+        return new Response(JSON.stringify({ error: 'step e currentRows são obrigatórios' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const STEP_SCHEMAS: Record<string, { columns: string[]; validations: string }> = {
+        empresas: {
+          columns: ['nome', 'cnpj', 'razao_social', 'contato_email', 'contato_telefone'],
+          validations: `nome obrigatório, cnpj obrigatório formato XX.XXX.XXX/XXXX-XX, email válido, telefone formato (XX) XXXXX-XXXX`,
+        },
+        usuarios: {
+          columns: ['email', 'nome_completo'],
+          validations: `email obrigatório e válido, nome_completo obrigatório`,
+        },
+        perfis: {
+          columns: ['email', 'empresa_cnpj', 'cargo', 'telefone'],
+          validations: `email deve existir no sistema, empresa_cnpj deve existir, telefone formato (XX) XXXXX-XXXX`,
+        },
+        roles: {
+          columns: ['email', 'role'],
+          validations: `email deve existir, role deve ser: admin_vizio, admin_empresa, rh_gestor, visualizador`,
+        },
+      };
+
+      const schema = STEP_SCHEMAS[step];
+      if (!schema) {
+        return new Response(JSON.stringify({ error: 'Step inválido' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Get context for validation
+      let contextData: Record<string, unknown> = {};
+      
+      if (step === 'perfis' || step === 'roles') {
+        const { data: profiles } = await supabaseAdmin
+          .from('profiles')
+          .select('email, id')
+          .limit(200);
+        contextData.existingEmails = profiles?.map(p => p.email) || [];
+      }
+      
+      if (step === 'perfis') {
+        const { data: empresas } = await supabaseAdmin
+          .from('empresas')
+          .select('cnpj, nome')
+          .limit(200);
+        contextData.existingEmpresas = empresas?.map(e => ({ cnpj: e.cnpj, nome: e.nome })) || [];
+      }
+
+      const systemPrompt = `Você é um assistente de validação de dados para um sistema de gestão de benefícios.
+Analise os dados e sugira correções de formato, dados faltantes e erros.
+NUNCA sugira ou processe senhas.
+Retorne APENAS JSON válido.`;
+
+      const userPrompt = `Analise os seguintes dados e sugira correções:
+
+DADOS ATUAIS:
+${JSON.stringify(suggestRows, null, 2)}
+
+${Object.keys(contextData).length > 0 ? `
+CONTEXTO DO SISTEMA:
+${JSON.stringify(contextData, null, 2)}
+` : ''}
+
+ESQUEMA ESPERADO:
+Colunas: ${schema.columns.join(', ')}
+Validações: ${schema.validations}
+
+Retorne um JSON no formato:
+{
+  "corrections": [
+    { "row": 0, "field": "campo", "currentValue": "valor_atual", "suggestedValue": "valor_sugerido", "reason": "motivo" }
+  ],
+  "warnings": [
+    { "row": 0, "message": "aviso importante" }
+  ],
+  "suggestions": [
+    "Sugestão geral 1"
+  ]
+}`;
+
+      try {
+        const aiResult = await callOpenAI(userPrompt, systemPrompt);
+        let parsedResult;
+        
+        try {
+          const jsonMatch = aiResult.content.match(/\{[\s\S]*\}/);
+          parsedResult = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(aiResult.content);
+        } catch {
+          console.error('Failed to parse AI suggest response:', aiResult.content);
+          return new Response(JSON.stringify({ error: 'Resposta inválida da IA' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        await supabaseAdmin.from('ai_audit_logs').insert({
+          empresa_id: empresaId || '00000000-0000-0000-0000-000000000000',
+          action: `setup_suggest_${step}`,
+          input_summary: JSON.stringify(suggestRows).substring(0, 200),
+          output_summary: JSON.stringify(parsedResult).substring(0, 500),
+          model_used: 'gpt-4o-mini',
+          tokens_used: aiResult.tokensUsed,
+          duration_ms: Date.now() - startTime,
+          user_id: user.id,
+        });
+
+        return new Response(JSON.stringify({ ok: true, ...parsedResult }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } catch (aiError) {
+        console.error('OpenAI suggest error:', aiError);
+        return new Response(JSON.stringify({ error: 'Erro ao processar com IA' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     return new Response(JSON.stringify({ error: 'Ação inválida', ok: false }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

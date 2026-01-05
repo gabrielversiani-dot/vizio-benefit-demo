@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Loader2, Info, ShieldAlert, Eye, UserPlus, Sparkles } from "lucide-react";
+import { CheckCircle2, Loader2, Info, ShieldAlert, Eye, UserPlus, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { EditableGrid, GridColumn, GridRow } from "../EditableGrid";
@@ -11,6 +11,17 @@ import { AIAssistantModal } from "../AIAssistantModal";
 import { useSetupDraft } from "@/hooks/useSetupDraft";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface UsuariosStepProps {
   onStatusUpdate: (status: { created: number; errors: number }) => void;
@@ -61,8 +72,9 @@ export function UsuariosStep({ onStatusUpdate }: UsuariosStepProps) {
   const [selectedEmpresa, setSelectedEmpresa] = useState<string>('');
   const [empresas, setEmpresas] = useState<{ id: string; nome: string; cnpj: string }[]>([]);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const hasRestoredRef = useRef(false);
   
-  const { saveDraft, getStepDraft, isLoaded } = useSetupDraft();
+  const { saveDraft, getStepDraft, clearStepDraft, isLoaded, wasRestoreShown, markRestoreShown } = useSetupDraft();
 
   // Handle AI parsed data
   const handleAIParsed = (parsedRows: Record<string, any>[]) => {
@@ -119,16 +131,31 @@ export function UsuariosStep({ onStatusUpdate }: UsuariosStepProps) {
     loadEmpresas();
   }, []);
 
-  // Load draft on mount
+  // Load draft on mount - only once
   useEffect(() => {
-    if (isLoaded) {
-      const draftData = getStepDraft('usuarios');
-      if (draftData.length > 0) {
-        setRows(draftData);
-        toast.info('Rascunho restaurado', { description: `${draftData.length} usuário(s)` });
+    if (!isLoaded || hasRestoredRef.current) return;
+    
+    const draftData = getStepDraft('usuarios');
+    if (draftData.length > 0) {
+      setRows(draftData);
+      hasRestoredRef.current = true;
+      
+      if (!wasRestoreShown('usuarios')) {
+        markRestoreShown('usuarios');
+        toast.info('Rascunho restaurado', { 
+          description: `${draftData.length} usuário(s)`,
+          action: { label: 'Dispensar', onClick: () => {} },
+        });
       }
     }
-  }, [isLoaded, getStepDraft]);
+  }, [isLoaded]);
+
+  // Handle clearing draft
+  const handleClearDraft = () => {
+    clearStepDraft('usuarios');
+    setRows([]);
+    toast.success('Rascunho limpo');
+  };
 
   // Auto-save draft
   const handleAutoSave = (updatedRows: GridRow[]) => {
@@ -338,6 +365,31 @@ export function UsuariosStep({ onStatusUpdate }: UsuariosStepProps) {
             <Sparkles className="h-4 w-4" />
             Assistente IA
           </Button>
+          
+          {/* Clear Draft Button */}
+          {rows.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground">
+                  <Trash2 className="h-4 w-4" />
+                  Limpar rascunho
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Limpar rascunho?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Isso removerá todos os dados não salvos da etapa de Usuários.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearDraft}>Limpar</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          
           {hasErrors && <span className="text-sm text-destructive">Corrija os erros antes de aplicar</span>}
         </div>
         <div className="flex gap-2">

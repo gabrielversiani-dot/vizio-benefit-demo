@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Info, RefreshCw, Eye, Save, Sparkles } from "lucide-react";
+import { Loader2, Info, RefreshCw, Eye, Save, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { EditableGrid, GridColumn, GridRow } from "../EditableGrid";
@@ -11,6 +11,17 @@ import { UndoBanner } from "../UndoBanner";
 import { AIAssistantModal } from "../AIAssistantModal";
 import { useSetupDraft } from "@/hooks/useSetupDraft";
 import { useSetupUndo } from "@/hooks/useSetupUndo";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface PerfisStepProps {
   onStatusUpdate: (status: { updated: number; errors: number }) => void;
@@ -27,8 +38,9 @@ export function PerfisStep({ onStatusUpdate }: PerfisStepProps) {
   const [empresas, setEmpresas] = useState<{ cnpj: string; id: string; nome: string }[]>([]);
   const [activeUndo, setActiveUndo] = useState<{ id: string; count: number; expiresAt: string } | null>(null);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const hasRestoredRef = useRef(false);
   
-  const { saveDraft, getStepDraft, isLoaded } = useSetupDraft();
+  const { saveDraft, getStepDraft, clearStepDraft, isLoaded, wasRestoreShown, markRestoreShown } = useSetupDraft();
   const { createSnapshot, getSnapshot, removeSnapshot } = useSetupUndo();
 
   // Load empresas for validation
@@ -40,16 +52,31 @@ export function PerfisStep({ onStatusUpdate }: PerfisStepProps) {
     loadEmpresas();
   }, []);
 
-  // Load draft on mount
+  // Load draft on mount - only once
   useEffect(() => {
-    if (isLoaded) {
-      const draftData = getStepDraft('perfis');
-      if (draftData.length > 0) {
-        setRows(draftData);
-        toast.info('Rascunho restaurado', { description: `${draftData.length} perfil(is)` });
+    if (!isLoaded || hasRestoredRef.current) return;
+    
+    const draftData = getStepDraft('perfis');
+    if (draftData.length > 0) {
+      setRows(draftData);
+      hasRestoredRef.current = true;
+      
+      if (!wasRestoreShown('perfis')) {
+        markRestoreShown('perfis');
+        toast.info('Rascunho restaurado', { 
+          description: `${draftData.length} perfil(is)`,
+          action: { label: 'Dispensar', onClick: () => {} },
+        });
       }
     }
-  }, [isLoaded, getStepDraft]);
+  }, [isLoaded]);
+
+  // Handle clearing draft
+  const handleClearDraft = () => {
+    clearStepDraft('perfis');
+    setRows([]);
+    toast.success('Rascunho limpo');
+  };
 
   const columns: GridColumn[] = [
     {
@@ -411,6 +438,31 @@ export function PerfisStep({ onStatusUpdate }: PerfisStepProps) {
             <Sparkles className="h-4 w-4" />
             Assistente IA
           </Button>
+          
+          {/* Clear Draft Button */}
+          {rows.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground">
+                  <Trash2 className="h-4 w-4" />
+                  Limpar rascunho
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Limpar rascunho?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Isso removerá todos os dados não salvos da etapa de Perfis.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearDraft}>Limpar</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          
           {hasErrors && <span className="text-sm text-destructive">Corrija os erros antes de aplicar</span>}
         </div>
         <div className="flex gap-2">

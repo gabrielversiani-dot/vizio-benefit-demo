@@ -179,7 +179,7 @@ async function callLovableAIVision(pages: PageImage[]): Promise<{ content: strin
         { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
         { role: 'user', content: contentArray }
       ],
-      max_tokens: 4000,
+      max_tokens: 16000,
     }),
   });
 
@@ -299,8 +299,59 @@ function parseExtractedData(content: string): ExtractedData {
     return parsed as ExtractedData;
   } catch (e) {
     console.error('Failed to parse AI response:', e);
-    console.error('Response content:', content);
-    throw new Error('Falha ao interpretar resposta da IA');
+    console.error('Response content (first 2000 chars):', content.slice(0, 2000));
+    
+    // Try to salvage partial JSON by fixing common truncation issues
+    try {
+      // Try to find the last complete row and close the JSON properly
+      const rowsMatch = jsonStr.match(/"rows"\s*:\s*\[/);
+      if (rowsMatch) {
+        // Find all complete row objects
+        const completeRows: unknown[] = [];
+        const rowPattern = /\{[^{}]*"competencia"[^{}]*\}/g;
+        let match;
+        while ((match = rowPattern.exec(jsonStr)) !== null) {
+          try {
+            completeRows.push(JSON.parse(match[0]));
+          } catch {
+            // Skip incomplete rows
+          }
+        }
+        
+        if (completeRows.length > 0) {
+          console.log(`Salvaged ${completeRows.length} complete rows from truncated response`);
+          
+          // Extract meta if possible
+          const metaMatch = jsonStr.match(/"meta"\s*:\s*(\{[^}]+\})/);
+          const docTypeMatch = jsonStr.match(/"document_type"\s*:\s*"([^"]+)"/);
+          
+          return {
+            document_type: docTypeMatch ? docTypeMatch[1] : 'unknown',
+            meta: metaMatch ? JSON.parse(metaMatch[1]) : {
+              operadora: 'Unimed Belo Horizonte',
+              empresa_nome: null,
+              produto: null,
+              periodo_inicio: null,
+              periodo_fim: null,
+            },
+            rows: completeRows as ExtractedData['rows'],
+            indicadores_periodo: { tipo: null, metricas: {}, quebras: {} },
+            validations: {
+              errors: [],
+              warnings: ['Resposta da IA foi truncada. Alguns dados podem estar faltando.'],
+            },
+            summary: { rows: completeRows.length, errors: 0, warnings: 1 },
+          };
+        }
+      }
+    } catch (salvageError) {
+      console.error('Salvage attempt failed:', salvageError);
+    }
+    
+    throw createAIError('AI_PARSE_ERROR', 'Falha ao interpretar resposta da IA. A resposta pode ter sido truncada.', { 
+      originalError: e instanceof Error ? e.message : String(e),
+      responsePreview: content.slice(0, 500) 
+    });
   }
 }
 

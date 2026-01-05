@@ -20,6 +20,7 @@ import Configuracoes from "./pages/Configuracoes";
 import ImportacaoIndex from "./pages/admin/ImportacaoIndex";
 import ImportacaoJobPreview from "./pages/admin/ImportacaoJobPreview";
 import CentralTestes from "./pages/admin/CentralTestes";
+import ComingSoon from "./pages/ComingSoon";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -144,6 +145,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <CentralTestes />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/coming-soon/:modulo"
+                element={
+                  <ProtectedRoute>
+                    <ComingSoon />
                   </ProtectedRoute>
                 }
               />

@@ -1,13 +1,17 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useEmpresa } from "@/contexts/EmpresaContext";
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import type { Json } from "@/integrations/supabase/types";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Download, 
   Upload, 
@@ -20,7 +24,11 @@ import {
   LogOut,
   AlertTriangle,
   Rocket,
-  Building2
+  Building2,
+  User,
+  Lock,
+  Save,
+  Loader2
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -37,43 +45,210 @@ import {
 import { SetupWizard } from "@/components/Setup/SetupWizard";
 import { FiliaisSection } from "@/components/Configuracoes/FiliaisSection";
 
+interface UserProfile {
+  nome_completo: string;
+  email: string;
+  telefone: string | null;
+  cargo: string | null;
+}
+
+interface EmpresaData {
+  nome: string;
+  cnpj: string;
+  razao_social: string | null;
+  contato_email: string | null;
+  contato_telefone: string | null;
+}
+
+interface Filial {
+  id: string;
+  nome: string;
+  tipo: string;
+  cnpj: string | null;
+}
+
+interface UserPreferences {
+  notif_fatura_proxima_vencimento: boolean;
+  notif_fatura_em_atraso: boolean;
+  notif_sinistralidade_importado: boolean;
+}
+
 export default function Configuracoes() {
   const { signOut, user } = useAuth();
+  const { isAdmin, isAdminVizio, userRole } = usePermissions();
+  const { empresaSelecionada: empresaId } = useEmpresa();
+  
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [loadingRole, setLoadingRole] = useState(true);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
+  
+  // Profile state
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+  
+  // Empresa state
+  const [empresa, setEmpresa] = useState<EmpresaData | null>(null);
+  const [filiais, setFiliais] = useState<Filial[]>([]);
+  const [loadingEmpresa, setLoadingEmpresa] = useState(true);
+  
+  // Preferences state
+  const [preferences, setPreferences] = useState<UserPreferences>({
+    notif_fatura_proxima_vencimento: true,
+    notif_fatura_em_atraso: true,
+    notif_sinistralidade_importado: true,
+  });
+  const [savingPreferences, setSavingPreferences] = useState(false);
 
-  // Fetch current user's role
+  // Fetch user profile
   useEffect(() => {
-    const fetchUserRole = async () => {
+    const fetchProfile = async () => {
       if (!user?.id) return;
       
       try {
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .maybeSingle();
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('nome_completo, email, telefone, cargo')
+          .eq('id', user.id)
+          .single();
         
-        setCurrentUserRole(roleData?.role || null);
+        if (error) throw error;
+        setProfile(data);
       } catch (error) {
-        console.error('Error fetching role:', error);
+        console.error('Error fetching profile:', error);
       } finally {
+        setLoadingProfile(false);
         setLoadingRole(false);
       }
     };
 
-    fetchUserRole();
+    fetchProfile();
+  }, [user?.id]);
+
+  // Fetch empresa data for clients
+  useEffect(() => {
+    const fetchEmpresa = async () => {
+      if (!empresaId) return;
+      
+      try {
+        const [empresaRes, filiaisRes] = await Promise.all([
+          supabase.from('empresas').select('nome, cnpj, razao_social, contato_email, contato_telefone').eq('id', empresaId).single(),
+          supabase.from('faturamento_entidades').select('id, nome, tipo, cnpj').eq('empresa_id', empresaId).eq('ativo', true)
+        ]);
+        
+        if (empresaRes.data) setEmpresa(empresaRes.data);
+        if (filiaisRes.data) setFiliais(filiaisRes.data);
+      } catch (error) {
+        console.error('Error fetching empresa:', error);
+      } finally {
+        setLoadingEmpresa(false);
+      }
+    };
+
+    fetchEmpresa();
+  }, [empresaId]);
+
+  // Fetch user preferences
+  useEffect(() => {
+    const fetchPreferences = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const { data } = await supabase
+          .from('user_preferences')
+          .select('preferences')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        if (data?.preferences) {
+          const prefs = data.preferences as Record<string, unknown>;
+          setPreferences({
+            notif_fatura_proxima_vencimento: prefs.notif_fatura_proxima_vencimento as boolean ?? true,
+            notif_fatura_em_atraso: prefs.notif_fatura_em_atraso as boolean ?? true,
+            notif_sinistralidade_importado: prefs.notif_sinistralidade_importado as boolean ?? true,
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching preferences:', error);
+      }
+    };
+
+    fetchPreferences();
   }, [user?.id]);
 
   const handleLogout = async () => {
     await signOut();
   };
 
+  const handleSaveProfile = async () => {
+    if (!user?.id || !profile) return;
+    
+    setSavingProfile(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          nome_completo: profile.nome_completo,
+          telefone: profile.telefone,
+          cargo: profile.cargo,
+        })
+        .eq('id', user.id);
+      
+      if (error) throw error;
+      toast.success('Perfil atualizado com sucesso!');
+    } catch (error: any) {
+      toast.error(`Erro ao salvar: ${error.message}`);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleSavePreferences = async () => {
+    if (!user?.id || !empresaId) return;
+    
+    setSavingPreferences(true);
+    try {
+      // Check if exists first
+      const { data: existing } = await supabase
+        .from('user_preferences')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const prefsJson: Json = {
+        notif_fatura_proxima_vencimento: preferences.notif_fatura_proxima_vencimento,
+        notif_fatura_em_atraso: preferences.notif_fatura_em_atraso,
+        notif_sinistralidade_importado: preferences.notif_sinistralidade_importado,
+      };
+      
+      if (existing) {
+        // Update
+        const { error } = await supabase
+          .from('user_preferences')
+          .update({ preferences: prefsJson })
+          .eq('user_id', user.id);
+        if (error) throw error;
+      } else {
+        // Insert
+        const { error } = await supabase
+          .from('user_preferences')
+          .insert([{
+            user_id: user.id,
+            empresa_id: empresaId,
+            preferences: prefsJson,
+          }]);
+        if (error) throw error;
+      }
+      toast.success('Preferências salvas com sucesso!');
+    } catch (error: any) {
+      toast.error(`Erro ao salvar: ${error.message}`);
+    } finally {
+      setSavingPreferences(false);
+    }
+  };
+
   const clearAllData = async () => {
     try {
-      // Deletar na ordem correta devido às foreign keys
       const { error: rolesError } = await supabase
         .from('user_roles')
         .delete()
@@ -103,7 +278,15 @@ export default function Configuracoes() {
     }
   };
 
-  const isAdminVizio = currentUserRole === 'admin_vizio';
+  const getRoleLabel = (role: string | null) => {
+    switch (role) {
+      case 'admin_vizio': return 'Administrador Vizio';
+      case 'admin_empresa': return 'Administrador da Empresa';
+      case 'rh_gestor': return 'Gestor de RH';
+      case 'visualizador': return 'Visualizador';
+      default: return 'Sem função atribuída';
+    }
+  };
 
   // If showing setup wizard, render only that
   if (showSetupWizard && isAdminVizio) {
@@ -127,6 +310,283 @@ export default function Configuracoes() {
     );
   }
 
+  // CLIENT VIEW - Simplified settings with tabs
+  if (!isAdmin) {
+    return (
+      <AppLayout>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold tracking-tight">Configurações</h1>
+              <p className="mt-2 text-muted-foreground">
+                Gerencie seu perfil e preferências
+              </p>
+            </div>
+            <Button variant="outline" onClick={handleLogout} className="gap-2">
+              <LogOut className="h-4 w-4" />
+              Sair
+            </Button>
+          </div>
+
+          <Tabs defaultValue="perfil" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="perfil" className="gap-2">
+                <User className="h-4 w-4" />
+                Perfil
+              </TabsTrigger>
+              <TabsTrigger value="empresa" className="gap-2">
+                <Building2 className="h-4 w-4" />
+                Empresa
+              </TabsTrigger>
+              <TabsTrigger value="notificacoes" className="gap-2">
+                <Bell className="h-4 w-4" />
+                Notificações
+              </TabsTrigger>
+              <TabsTrigger value="seguranca" className="gap-2">
+                <Lock className="h-4 w-4" />
+                Segurança
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Tab: Perfil */}
+            <TabsContent value="perfil">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Meu Perfil</CardTitle>
+                  <CardDescription>Atualize suas informações pessoais</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {loadingProfile ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Nome completo</Label>
+                          <Input 
+                            value={profile?.nome_completo || ''} 
+                            onChange={(e) => setProfile(p => p ? {...p, nome_completo: e.target.value} : null)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Email</Label>
+                          <Input value={profile?.email || ''} disabled className="bg-muted" />
+                          <p className="text-xs text-muted-foreground">O email não pode ser alterado</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Telefone</Label>
+                          <Input 
+                            value={profile?.telefone || ''} 
+                            onChange={(e) => setProfile(p => p ? {...p, telefone: e.target.value} : null)}
+                            placeholder="(00) 00000-0000"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Cargo</Label>
+                          <Input 
+                            value={profile?.cargo || ''} 
+                            onChange={(e) => setProfile(p => p ? {...p, cargo: e.target.value} : null)}
+                            placeholder="Ex: Analista de RH"
+                          />
+                        </div>
+                      </div>
+                      <Button onClick={handleSaveProfile} disabled={savingProfile} className="gap-2">
+                        {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Salvar alterações
+                      </Button>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab: Empresa */}
+            <TabsContent value="empresa">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Dados da Empresa</CardTitle>
+                  <CardDescription>Informações da sua empresa (somente leitura)</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {loadingEmpresa ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : empresa ? (
+                    <>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Nome</Label>
+                          <Input value={empresa.nome} disabled className="bg-muted" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>CNPJ</Label>
+                          <Input value={empresa.cnpj} disabled className="bg-muted" />
+                        </div>
+                        {empresa.razao_social && (
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Razão Social</Label>
+                            <Input value={empresa.razao_social} disabled className="bg-muted" />
+                          </div>
+                        )}
+                        {empresa.contato_email && (
+                          <div className="space-y-2">
+                            <Label>Email de Contato</Label>
+                            <Input value={empresa.contato_email} disabled className="bg-muted" />
+                          </div>
+                        )}
+                        {empresa.contato_telefone && (
+                          <div className="space-y-2">
+                            <Label>Telefone de Contato</Label>
+                            <Input value={empresa.contato_telefone} disabled className="bg-muted" />
+                          </div>
+                        )}
+                      </div>
+
+                      {filiais.length > 0 && (
+                        <>
+                          <Separator />
+                          <div>
+                            <h4 className="font-medium mb-3">Filiais e Entidades</h4>
+                            <div className="space-y-2">
+                              {filiais.map(f => (
+                                <div key={f.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+                                  <div>
+                                    <p className="font-medium">{f.nome}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {f.tipo === 'coligada' ? 'Coligada' : 'Subestipulante'}
+                                      {f.cnpj && ` • ${f.cnpj}`}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                        <p className="text-sm text-muted-foreground">
+                          <strong>Produtos contratados:</strong> Saúde, Vida, Odonto
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          <strong>Operadoras:</strong> Unimed BH
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-muted-foreground">Nenhuma empresa vinculada</p>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab: Notificações */}
+            <TabsContent value="notificacoes">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Preferências de Notificação</CardTitle>
+                  <CardDescription>Escolha quais alertas deseja receber</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Fatura próxima do vencimento</p>
+                      <p className="text-sm text-muted-foreground">
+                        Receber aviso 7 dias antes do vencimento
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={preferences.notif_fatura_proxima_vencimento}
+                      onCheckedChange={(v) => setPreferences(p => ({...p, notif_fatura_proxima_vencimento: v}))}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Fatura em atraso</p>
+                      <p className="text-sm text-muted-foreground">
+                        Receber aviso quando fatura estiver em atraso
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={preferences.notif_fatura_em_atraso}
+                      onCheckedChange={(v) => setPreferences(p => ({...p, notif_fatura_em_atraso: v}))}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Relatório de sinistralidade importado</p>
+                      <p className="text-sm text-muted-foreground">
+                        Receber aviso quando novos dados de sinistralidade forem disponibilizados
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={preferences.notif_sinistralidade_importado}
+                      onCheckedChange={(v) => setPreferences(p => ({...p, notif_sinistralidade_importado: v}))}
+                    />
+                  </div>
+                  <Button onClick={handleSavePreferences} disabled={savingPreferences} className="gap-2 mt-4">
+                    {savingPreferences ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Salvar preferências
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab: Segurança */}
+            <TabsContent value="seguranca">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Acesso e Segurança</CardTitle>
+                  <CardDescription>Gerencie seu acesso à plataforma</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="p-4 rounded-lg bg-muted/50 border">
+                    <div className="flex items-center gap-3">
+                      <Shield className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">Sua função atual</p>
+                        <Badge variant="secondary" className="mt-1">
+                          {getRoleLabel(userRole)}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div className="space-y-4">
+                    <Button variant="outline" className="w-full gap-2" onClick={() => {
+                      // Trigger password reset flow
+                      if (user?.email) {
+                        supabase.auth.resetPasswordForEmail(user.email).then(() => {
+                          toast.success('Email de redefinição de senha enviado!');
+                        });
+                      }
+                    }}>
+                      <Lock className="h-4 w-4" />
+                      Alterar senha
+                    </Button>
+                    
+                    <Button variant="outline" onClick={handleLogout} className="w-full gap-2 text-destructive hover:text-destructive">
+                      <LogOut className="h-4 w-4" />
+                      Encerrar sessão
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // ADMIN VIEW - Full settings
   return (
     <AppLayout>
       <div className="space-y-8">
@@ -190,12 +650,12 @@ export default function Configuracoes() {
                     <p className="text-xs text-muted-foreground">{user?.email || 'Carregando...'}</p>
                     {loadingRole ? (
                       <p className="text-xs text-muted-foreground italic">Verificando role...</p>
-                    ) : currentUserRole ? (
+                    ) : userRole ? (
                       <Badge 
-                        variant={currentUserRole === 'admin_vizio' ? 'default' : 'secondary'}
+                        variant={userRole === 'admin_vizio' ? 'default' : 'secondary'}
                         className="mt-1"
                       >
-                        Role: {currentUserRole}
+                        Role: {userRole}
                       </Badge>
                     ) : (
                       <Badge variant="destructive" className="mt-1">
@@ -203,7 +663,7 @@ export default function Configuracoes() {
                       </Badge>
                     )}
                   </div>
-                  {currentUserRole && (
+                  {userRole && (
                     <Badge variant="outline" className="ml-auto bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
                       ✓ Admin Configurado
                     </Badge>

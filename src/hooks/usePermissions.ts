@@ -158,12 +158,14 @@ const rolePermissions: Record<string, Permission[]> = {
     // Sinistralidade - View Only + Download
     "sinistralidade:view",
     "sinistralidade:download",
-    // Beneficiários - View Only
+    // Beneficiários - View Only (coming soon)
     "beneficiarios:view",
-    // Movimentação - View Only
+    // Movimentação - View Only (coming soon)
     "movimentacao:view",
-    // Demandas - View Only
+    // Demandas - View Only (coming soon)
     "demandas:view",
+    // Client can access Configurações (limited)
+    "configuracoes:view",
   ],
   visualizador: [
     // Promoção Saúde - View Only + Download
@@ -178,10 +180,12 @@ const rolePermissions: Record<string, Permission[]> = {
     // Sinistralidade - View Only + Download
     "sinistralidade:view",
     "sinistralidade:download",
-    // Beneficiários - View Only
+    // Beneficiários - View Only (coming soon)
     "beneficiarios:view",
-    // Movimentação - View Only
+    // Movimentação - View Only (coming soon)
     "movimentacao:view",
+    // Client can access Configurações (limited)
+    "configuracoes:view",
   ],
 };
 

@@ -10,9 +10,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Trash2, Upload, FileText, X, Download, AlertCircle } from "lucide-react";
+import { Plus, Trash2, Upload, FileText, X, Download, AlertCircle, Building2 } from "lucide-react";
 import { format } from "date-fns";
 
 type FaturaFormModalProps = {
@@ -52,6 +52,7 @@ const formatCurrency = (value: number) => {
 
 export function FaturaFormModal({ open, onOpenChange, fatura, mode, onSuccess }: FaturaFormModalProps) {
   const { empresaSelecionada, isAdminVizio, empresas } = useEmpresa();
+  const queryClient = useQueryClient();
   
   // Form state
   const [empresaId, setEmpresaId] = useState(empresaSelecionada || "");
@@ -73,6 +74,49 @@ export function FaturaFormModal({ open, onOpenChange, fatura, mode, onSuccess }:
   const [documentoTipo, setDocumentoTipo] = useState<"boleto" | "nf" | "demonstrativo" | "outro">("boleto");
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // New filial form state
+  const [showNewFilialForm, setShowNewFilialForm] = useState(false);
+  const [newFilialNome, setNewFilialNome] = useState("");
+  const [newFilialTipo, setNewFilialTipo] = useState<"coligada" | "subestipulante">("coligada");
+  const [isCreatingFilial, setIsCreatingFilial] = useState(false);
+
+  const handleCreateFilial = async () => {
+    if (!newFilialNome.trim()) {
+      toast.error("Informe o nome da filial");
+      return;
+    }
+    if (!empresaId) {
+      toast.error("Selecione uma empresa primeiro");
+      return;
+    }
+
+    setIsCreatingFilial(true);
+    try {
+      const { data, error } = await supabase
+        .from("faturamento_entidades")
+        .insert({
+          empresa_id: empresaId,
+          nome: newFilialNome.trim(),
+          tipo: newFilialTipo,
+          ativo: true,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast.success("Filial cadastrada com sucesso!");
+      setFilialId(data.id);
+      setNewFilialNome("");
+      setShowNewFilialForm(false);
+      queryClient.invalidateQueries({ queryKey: ["faturamento-entidades", empresaId] });
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao cadastrar filial");
+    } finally {
+      setIsCreatingFilial(false);
+    }
+  };
 
   // Reset filial when empresa changes
   useEffect(() => {
@@ -411,31 +455,98 @@ export function FaturaFormModal({ open, onOpenChange, fatura, mode, onSuccess }:
 
             {/* Filial selector (optional) */}
             <div className="space-y-2">
-              <Label>Filial (opcional)</Label>
-              <Select 
-                value={filialId || "none"} 
-                onValueChange={(v) => setFilialId(v === "none" ? null : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma filial (opcional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhuma filial</SelectItem>
-                  {entidades.length > 0 ? (
-                    entidades.map(e => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.nome} ({e.tipo === "coligada" ? "Coligada" : "Subestipulante"})
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="none" disabled>Nenhuma filial cadastrada</SelectItem>
+              <div className="flex items-center justify-between">
+                <Label>Filial (opcional)</Label>
+                {!showNewFilialForm && empresaId && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto p-0 text-xs text-primary hover:text-primary/80"
+                    onClick={() => setShowNewFilialForm(true)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Nova filial
+                  </Button>
+                )}
+              </div>
+              
+              {showNewFilialForm ? (
+                <Card className="border-dashed">
+                  <CardContent className="p-3 space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                      <Building2 className="h-4 w-4" />
+                      Cadastrar nova filial
+                    </div>
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Nome da filial"
+                        value={newFilialNome}
+                        onChange={(e) => setNewFilialNome(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Select value={newFilialTipo} onValueChange={(v: any) => setNewFilialTipo(v)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="coligada">Coligada</SelectItem>
+                          <SelectItem value="subestipulante">Subestipulante</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleCreateFilial}
+                        disabled={isCreatingFilial || !newFilialNome.trim()}
+                      >
+                        {isCreatingFilial ? "Salvando..." : "Salvar"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setShowNewFilialForm(false);
+                          setNewFilialNome("");
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <Select 
+                    value={filialId || "none"} 
+                    onValueChange={(v) => setFilialId(v === "none" ? null : v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma filial (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Nenhuma filial</SelectItem>
+                      {entidades.length > 0 ? (
+                        entidades.map(e => (
+                          <SelectItem key={e.id} value={e.id}>
+                            {e.nome} ({e.tipo === "coligada" ? "Coligada" : "Subestipulante"})
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="none" disabled>Nenhuma filial cadastrada</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {entidades.length === 0 && empresaId && (
+                    <p className="text-xs text-muted-foreground">
+                      Nenhuma filial cadastrada. Clique em "Nova filial" para adicionar.
+                    </p>
                   )}
-                </SelectContent>
-              </Select>
-              {entidades.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Nenhuma filial cadastrada para esta empresa.
-                </p>
+                </>
               )}
             </div>
 

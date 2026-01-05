@@ -50,6 +50,39 @@ const validateCNPJ = (cnpj: string): boolean => {
   return result === parseInt(digits.charAt(1));
 };
 
+// Normalize phone: keep only digits, format as (XX) XXXXX-XXXX or (XX) XXXX-XXXX
+const normalizePhone = (phone: string): string => {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 0) return '';
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  } else if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  return phone; // Return as-is if not a standard format
+};
+
+// Normalize CNPJ: keep only digits
+const normalizeCNPJ = (cnpj: string): string => {
+  return cnpj.replace(/\D/g, '');
+};
+
+// Email validation - must have valid domain part
+const validateEmail = (email: string): string | null => {
+  if (!email || email.trim() === '') return null; // Email is optional
+  const trimmed = email.trim();
+  // Check for incomplete email (missing domain)
+  if (trimmed.endsWith('@') || !trimmed.includes('@')) {
+    return 'Email incompleto - falta o domínio (ex: @empresa.com)';
+  }
+  // Check for valid email format with proper domain
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  if (!emailRegex.test(trimmed)) {
+    return 'Email inválido - verifique o formato (ex: contato@empresa.com)';
+  }
+  return null;
+};
+
 const columns: GridColumn[] = [
   {
     key: 'nome',
@@ -64,10 +97,12 @@ const columns: GridColumn[] = [
     label: 'CNPJ',
     type: 'text',
     required: true,
-    placeholder: '00.000.000/0001-00',
+    placeholder: '00000000000100 (14 dígitos)',
     validate: (v) => {
-      if (!v.trim()) return 'CNPJ é obrigatório';
-      if (!validateCNPJ(v)) return 'CNPJ inválido';
+      const normalized = normalizeCNPJ(v);
+      if (!normalized) return 'CNPJ é obrigatório';
+      if (normalized.length !== 14) return 'CNPJ deve ter 14 dígitos';
+      if (!validateCNPJ(normalized)) return 'CNPJ inválido (dígitos verificadores incorretos)';
       return null;
     },
   },
@@ -82,10 +117,7 @@ const columns: GridColumn[] = [
     label: 'Email',
     type: 'email',
     placeholder: 'contato@empresa.com',
-    validate: (v) => {
-      if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'Email inválido';
-      return null;
-    },
+    validate: validateEmail,
   },
   {
     key: 'contato_telefone',
@@ -248,50 +280,59 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
       }
 
       try {
-        // Check if exists
+        // Normalize data before saving
+        const normalizedCnpj = normalizeCNPJ(row.data.cnpj);
+        const normalizedPhone = row.data.contato_telefone ? normalizePhone(row.data.contato_telefone) : null;
+        const trimmedEmail = row.data.contato_email?.trim() || null;
+
+        // Check if exists by CNPJ
         const { data: existing } = await supabase
           .from('empresas')
           .select('*')
-          .eq('cnpj', row.data.cnpj)
+          .eq('cnpj', normalizedCnpj)
           .maybeSingle();
 
         if (existing) {
           // Store previous data for undo
           previousData.push({ ...existing, _action: 'update' });
           
-          // Update
-          const { error: updateError } = await supabase
+          // Update existing empresa
+          const { data: updatedRecord, error: updateError } = await supabase
             .from('empresas')
             .update({
-              nome: row.data.nome,
-              razao_social: row.data.razao_social || null,
-              contato_email: row.data.contato_email || null,
-              contato_telefone: row.data.contato_telefone || null,
+              nome: row.data.nome.trim(),
+              razao_social: row.data.razao_social?.trim() || null,
+              contato_email: trimmedEmail,
+              contato_telefone: normalizedPhone,
             })
-            .eq('id', existing.id);
+            .eq('id', existing.id)
+            .select('id')
+            .single();
 
           if (updateError) throw updateError;
           updated++;
-          updatedRows[i] = { ...row, status: 'success' };
+          updatedRows[i] = { ...row, status: 'success', data: { ...row.data, _savedId: existing.id } };
+          console.log(`Updated empresa: ${existing.id} (${normalizedCnpj})`);
         } else {
-          // Insert
+          // Insert new empresa
           const { data: inserted, error: insertError } = await supabase
             .from('empresas')
             .insert({
-              nome: row.data.nome,
-              cnpj: row.data.cnpj,
-              razao_social: row.data.razao_social || null,
-              contato_email: row.data.contato_email || null,
-              contato_telefone: row.data.contato_telefone || null,
+              nome: row.data.nome.trim(),
+              cnpj: normalizedCnpj,
+              razao_social: row.data.razao_social?.trim() || null,
+              contato_email: trimmedEmail,
+              contato_telefone: normalizedPhone,
             })
-            .select()
+            .select('id')
             .single();
 
           if (insertError) throw insertError;
           
           previousData.push({ id: inserted.id, _action: 'create' });
           created++;
-          updatedRows[i] = { ...row, status: 'success' };
+          updatedRows[i] = { ...row, status: 'success', data: { ...row.data, _savedId: inserted.id } };
+          console.log(`Created empresa: ${inserted.id} (${normalizedCnpj})`);
         }
       } catch (err: any) {
         console.error('Error saving empresa:', err);
@@ -312,10 +353,20 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
       setActiveUndo({ id: snapshotId, count: created + updated, expiresAt });
     }
 
+    // Show detailed success message with IDs
+    const savedIds = updatedRows
+      .filter(r => r.status === 'success' && r.data._savedId)
+      .map(r => r.data._savedId);
+
     if (errors === 0) {
-      toast.success(`${created} criada(s), ${updated} atualizada(s)`);
+      toast.success(`Empresas salvas com sucesso`, {
+        description: `${created} criada(s), ${updated} atualizada(s). IDs: ${savedIds.join(', ')}`,
+        duration: 5000,
+      });
     } else {
-      toast.error(`${errors} erro(s). Verifique os registros.`);
+      toast.error(`${errors} erro(s) encontrado(s)`, {
+        description: `${created + updated} salva(s) com sucesso. Verifique os registros com erro.`,
+      });
     }
   };
 

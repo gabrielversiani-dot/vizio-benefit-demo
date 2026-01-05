@@ -252,7 +252,7 @@ export function UsuariosStep({ onStatusUpdate }: UsuariosStepProps) {
 
       const { data, error } = await supabase.functions.invoke('admin-create-users', {
         body: {
-          empresaId: selectedEmpresa || undefined,
+          empresaId: selectedEmpresa && selectedEmpresa !== 'none' ? selectedEmpresa : undefined,
           users: usersToCreate.map(row => ({
             email: row.data.email,
             password: row.data.password,
@@ -333,7 +333,7 @@ export function UsuariosStep({ onStatusUpdate }: UsuariosStepProps) {
             <SelectValue placeholder="Selecione uma empresa para vincular..." />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Nenhuma (definir depois)</SelectItem>
+            <SelectItem value="none">Nenhuma (definir depois)</SelectItem>
             {empresas.map(emp => (
               <SelectItem key={emp.id} value={emp.id}>
                 {emp.nome} ({emp.cnpj})
@@ -434,7 +434,7 @@ export function UsuariosStep({ onStatusUpdate }: UsuariosStepProps) {
         currentRows={rows}
         onApplyParsed={handleAIParsed}
         onApplyCorrections={handleAICorrections}
-        empresaId={selectedEmpresa}
+        empresaId={selectedEmpresa !== 'none' ? selectedEmpresa : undefined}
       />
     </div>
   );

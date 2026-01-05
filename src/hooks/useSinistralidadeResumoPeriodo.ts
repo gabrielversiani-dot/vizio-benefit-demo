@@ -66,12 +66,14 @@ export function useSinistralidadeResumoPeriodo(
 
       const mesesAtras = new Date();
       mesesAtras.setMonth(mesesAtras.getMonth() - 12);
+      // Formato YYYY-MM para comparar com coluna competencia
+      const competenciaMinima = `${mesesAtras.getFullYear()}-${String(mesesAtras.getMonth() + 1).padStart(2, '0')}`;
 
       const { data, error } = await supabase
         .from("sinistralidade")
         .select("valor_premio, valor_sinistros, indice_sinistralidade, competencia, vidas_ativas")
         .eq("empresa_id", empresaId)
-        .gte("competencia", mesesAtras.toISOString().split("T")[0])
+        .gte("competencia", competenciaMinima)
         .order("competencia", { ascending: true });
 
       if (error) {

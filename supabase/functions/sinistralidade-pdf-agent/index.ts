@@ -66,10 +66,14 @@ MAPEAMENTO DE CAMPOS:
 - "IU" ou "Índice de Utilização" → iu (usar EXATAMENTE o valor informado)
 - "Média" (última coluna) → media
 
-IMPORTANTE - MÉDIA DO PERÍODO:
-- A coluna "Média" no relatório representa a MÉDIA DO PERÍODO (sinistralidade consolidada).
-- Este valor é MUITO IMPORTANTE e deve ser capturado em meta.media_periodo.
-- Mesmo que apareça apenas no topo/rodapé, extrair e preencher meta.media_periodo.
+IMPORTANTE - MÉDIAS DO PERÍODO (coluna "Média" do relatório):
+- A coluna "Média" representa o CONSOLIDADO DO PERÍODO (valores médios mensais).
+- OBRIGATÓRIO extrair TODAS as médias disponíveis para meta:
+  - meta.media_periodo (IU/Sinistralidade média) → linha "IU" coluna "Média"
+  - meta.premio_medio_periodo (Receita média) → linha "Receita Total" ou "Faturamento" coluna "Média"
+  - meta.sinistros_medio_periodo (Custo médio) → linha "Custo Assistencial Total" ou "Sinistros" coluna "Média"
+  - meta.vidas_ativas_media_periodo (Contingente médio) → linha "Contingente" ou "Vidas" coluna "Média"
+- Mesmo que apareça apenas no topo/rodapé, extrair e preencher esses valores.
 
 RETORNE SOMENTE JSON VÁLIDO (sem markdown, sem comentários, sem texto fora do JSON):
 {
@@ -80,7 +84,10 @@ RETORNE SOMENTE JSON VÁLIDO (sem markdown, sem comentários, sem texto fora do 
     "produto": "nome do plano/produto se aparecer ou null",
     "periodo_inicio": "YYYY-MM-DD ou null",
     "periodo_fim": "YYYY-MM-DD ou null",
-    "media_periodo": numero ou null (OBRIGATÓRIO - valor da coluna Média do relatório)
+    "media_periodo": numero ou null (OBRIGATÓRIO - IU/Sinistralidade média do período),
+    "premio_medio_periodo": numero ou null (OBRIGATÓRIO - Receita Total média do período),
+    "sinistros_medio_periodo": numero ou null (OBRIGATÓRIO - Custo Assistencial Total média do período),
+    "vidas_ativas_media_periodo": numero ou null (OBRIGATÓRIO - Contingente média do período)
   },
   "rows": [
     {
@@ -135,6 +142,9 @@ interface ExtractedData {
     periodo_inicio: string | null;
     periodo_fim: string | null;
     media_periodo: number | null;
+    premio_medio_periodo: number | null;
+    sinistros_medio_periodo: number | null;
+    vidas_ativas_media_periodo: number | null;
   };
   rows: Array<{
     competencia: string | null;
@@ -413,6 +423,9 @@ function parseExtractedData(content: string, requestId?: string): ExtractedData 
       periodo_inicio: null,
       periodo_fim: null,
       media_periodo: null,
+      premio_medio_periodo: null,
+      sinistros_medio_periodo: null,
+      vidas_ativas_media_periodo: null,
     },
     rows: [],
     indicadores_periodo: { tipo: null, metricas: {}, quebras: {} },
@@ -430,6 +443,9 @@ function parseExtractedData(content: string, requestId?: string): ExtractedData 
       periodo_inicio: typeof meta.periodo_inicio === 'string' ? meta.periodo_inicio : null,
       periodo_fim: typeof meta.periodo_fim === 'string' ? meta.periodo_fim : null,
       media_periodo: typeof meta.media_periodo === 'number' ? meta.media_periodo : null,
+      premio_medio_periodo: typeof meta.premio_medio_periodo === 'number' ? meta.premio_medio_periodo : null,
+      sinistros_medio_periodo: typeof meta.sinistros_medio_periodo === 'number' ? meta.sinistros_medio_periodo : null,
+      vidas_ativas_media_periodo: typeof meta.vidas_ativas_media_periodo === 'number' ? meta.vidas_ativas_media_periodo : null,
     };
   }
   
@@ -620,6 +636,9 @@ serve(async (req) => {
               periodo_inicio: null,
               periodo_fim: null,
               media_periodo: null,
+              premio_medio_periodo: null,
+              sinistros_medio_periodo: null,
+              vidas_ativas_media_periodo: null,
             },
             rows: [],
             indicadores_periodo: { tipo: null, metricas: {}, quebras: {} },
@@ -858,11 +877,12 @@ serve(async (req) => {
         }
       }
 
-      // Insert period indicators if present OR if we have media_periodo
+      // Insert period indicators if present OR if we have any media values
       const meta = columnMapping.meta;
       const indicadores = columnMapping.indicadores_periodo;
+      const hasAnyMedia = meta.media_periodo || meta.premio_medio_periodo || meta.sinistros_medio_periodo || meta.vidas_ativas_media_periodo;
       
-      if (indicadores?.tipo || meta.media_periodo) {
+      if (indicadores?.tipo || hasAnyMedia) {
         const { error: indicadorError } = await supabaseAdmin
           .from('sinistralidade_indicadores_periodo')
           .insert({
@@ -874,7 +894,10 @@ serve(async (req) => {
             produto: meta.produto,
             metricas: indicadores?.metricas || {},
             quebras: indicadores?.quebras || {},
-            media_periodo: meta.media_periodo, // New field - sinistralidade média do período
+            media_periodo: meta.media_periodo,
+            premio_medio_periodo: meta.premio_medio_periodo,
+            sinistros_medio_periodo: meta.sinistros_medio_periodo,
+            vidas_ativas_media_periodo: meta.vidas_ativas_media_periodo,
             fonte_pdf_path: job.arquivo_url,
             import_job_id: job.id,
             criado_por: user.id

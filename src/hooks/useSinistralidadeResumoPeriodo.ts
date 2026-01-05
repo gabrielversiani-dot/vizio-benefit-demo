@@ -5,6 +5,9 @@ export type PeriodoSource = "pdf_media" | "calculated";
 
 export interface SinistralidadeResumoPeriodo {
   media_periodo: number | null;
+  premio_medio_periodo: number | null;
+  sinistros_medio_periodo: number | null;
+  vidas_ativas_media_periodo: number | null;
   periodo_inicio: string | null;
   periodo_fim: string | null;
   operadora: string | null;
@@ -14,6 +17,7 @@ export interface SinistralidadeResumoPeriodo {
   calculated_media: number;
   calculated_premio: number;
   calculated_sinistros: number;
+  calculated_vidas: number;
 }
 
 export function useSinistralidadeResumoPeriodo(
@@ -76,21 +80,36 @@ export function useSinistralidadeResumoPeriodo(
   const totalPremio = monthlyData.reduce((acc, s) => acc + Number(s.valor_premio || 0), 0);
   const totalSinistros = monthlyData.reduce((acc, s) => acc + Number(s.valor_sinistros || 0), 0);
   const calculatedMedia = totalPremio > 0 ? (totalSinistros / totalPremio) * 100 : 0;
+  const avgPremio = monthlyData.length > 0 ? totalPremio / monthlyData.length : 0;
+  const avgSinistros = monthlyData.length > 0 ? totalSinistros / monthlyData.length : 0;
 
   // Determine which source to use
-  const indicador = indicadorQuery.data;
+  const indicador = indicadorQuery.data as {
+    media_periodo?: number | null;
+    premio_medio_periodo?: number | null;
+    sinistros_medio_periodo?: number | null;
+    vidas_ativas_media_periodo?: number | null;
+    periodo_inicio?: string | null;
+    periodo_fim?: string | null;
+    operadora?: string | null;
+    import_job_id?: string | null;
+  } | null;
   const hasPdfMedia = indicador?.media_periodo != null;
 
   const resumo: SinistralidadeResumoPeriodo = {
-    media_periodo: hasPdfMedia ? indicador.media_periodo : null,
+    media_periodo: indicador?.media_periodo ?? null,
+    premio_medio_periodo: indicador?.premio_medio_periodo ?? null,
+    sinistros_medio_periodo: indicador?.sinistros_medio_periodo ?? null,
+    vidas_ativas_media_periodo: indicador?.vidas_ativas_media_periodo ?? null,
     periodo_inicio: indicador?.periodo_inicio || null,
     periodo_fim: indicador?.periodo_fim || null,
     operadora: indicador?.operadora || null,
     import_job_id: indicador?.import_job_id || null,
     source: hasPdfMedia && usePdfMedia ? "pdf_media" : "calculated",
     calculated_media: calculatedMedia,
-    calculated_premio: totalPremio,
-    calculated_sinistros: totalSinistros,
+    calculated_premio: avgPremio,
+    calculated_sinistros: avgSinistros,
+    calculated_vidas: 0, // No fallback for vidas from monthly data
   };
 
   // Final media value to use

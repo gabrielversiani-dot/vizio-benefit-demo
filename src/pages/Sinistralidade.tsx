@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Activity, TrendingDown, TrendingUp, AlertTriangle, FileText, Building2, Stethoscope, FlaskConical, BedDouble, Scissors, Upload } from "lucide-react";
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Activity, TrendingDown, TrendingUp, AlertTriangle, FileText, Building2, Stethoscope, FlaskConical, BedDouble, Scissors, Upload, Info } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +19,7 @@ import { IndicadoresPeriodoSection } from "@/components/Sinistralidade/Indicador
 import { PDFImportChecklist } from "@/components/Sinistralidade/PDFImportChecklist";
 import { SinistroDocsSection } from "@/components/Sinistralidade/SinistroDocsSection";
 import { useAuth } from "@/hooks/useAuth";
+import { useSinistralidadeResumoPeriodo } from "@/hooks/useSinistralidadeResumoPeriodo";
 
 type Sinistralidade = {
   id: string;
@@ -40,6 +42,9 @@ type Empresa = {
   nome: string;
 };
 
+// Tipos de fonte de dados para o KPI
+type KpiSource = "pdf_importado" | "calculado_12" | "calculado_6" | "calculado_24";
+
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
 const formatCurrency = (value: number) => {
@@ -55,8 +60,15 @@ export default function Sinistralidade() {
   const { user } = useAuth();
   const { empresaSelecionada } = useEmpresa();
   const [empresaFilter, setEmpresaFilter] = useState<string>("todas");
+  const [kpiSource, setKpiSource] = useState<KpiSource>("pdf_importado");
   const [periodoFilter, setPeriodoFilter] = useState<string>("12");
   const [importModalOpen, setImportModalOpen] = useState(false);
+
+  // Hook para buscar média do período do PDF
+  const { resumo, mediaFinal, hasPdfMedia, isLoading: isLoadingResumo } = useSinistralidadeResumoPeriodo(
+    empresaSelecionada,
+    kpiSource === "pdf_importado"
+  );
 
   // Check user roles
   const { data: userRoles = [] } = useQuery({
@@ -324,6 +336,8 @@ export default function Sinistralidade() {
             queryClient.invalidateQueries({ queryKey: ["sinistralidade-documentos"] });
             queryClient.invalidateQueries({ queryKey: ["import-jobs-sinistralidade"] });
             queryClient.invalidateQueries({ queryKey: ["indicadores-periodo"] });
+            queryClient.invalidateQueries({ queryKey: ["sinistralidade-resumo-periodo"] });
+            queryClient.invalidateQueries({ queryKey: ["sinistralidade-monthly-fallback"] });
           }}
         />
       </AppLayout>
@@ -361,14 +375,27 @@ export default function Sinistralidade() {
                 </SelectContent>
               </Select>
             )}
-            <Select value={periodoFilter} onValueChange={setPeriodoFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Período" />
+            <Select value={kpiSource} onValueChange={(v) => setKpiSource(v as KpiSource)}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Fonte do KPI" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="6">Últimos 6 meses</SelectItem>
-                <SelectItem value="12">Últimos 12 meses</SelectItem>
-                <SelectItem value="24">Últimos 24 meses</SelectItem>
+                <SelectItem value="pdf_importado" disabled={!hasPdfMedia}>
+                  Último PDF importado {!hasPdfMedia && "(indisponível)"}
+                </SelectItem>
+                <SelectItem value="calculado_6">Últimos 6 meses (calculado)</SelectItem>
+                <SelectItem value="calculado_12">Últimos 12 meses (calculado)</SelectItem>
+                <SelectItem value="calculado_24">Últimos 24 meses (calculado)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={periodoFilter} onValueChange={setPeriodoFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Período gráfico" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="6">Gráfico: 6 meses</SelectItem>
+                <SelectItem value="12">Gráfico: 12 meses</SelectItem>
+                <SelectItem value="24">Gráfico: 24 meses</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -376,25 +403,76 @@ export default function Sinistralidade() {
 
         {/* KPI Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
+          {/* KPI Índice Médio - Usa media_periodo do PDF quando disponível */}
+          <Card className={kpiSource === "pdf_importado" && hasPdfMedia ? "ring-2 ring-primary/50" : ""}>
             <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Activity className="h-5 w-5 text-primary" />
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Activity className="h-5 w-5 text-primary" />
+                  </div>
+                  <p className="text-sm font-medium text-muted-foreground">Índice Médio</p>
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">Índice Médio</p>
+                {/* Tooltip com informações de debug */}
+                <TooltipProvider>
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="max-w-xs">
+                      <div className="space-y-1 text-xs">
+                        <p><strong>Fonte:</strong> {kpiSource === "pdf_importado" && hasPdfMedia ? "Média do Relatório PDF" : "Calculado (mensal)"}</p>
+                        {resumo.periodo_inicio && resumo.periodo_fim && (
+                          <p><strong>Período:</strong> {format(new Date(resumo.periodo_inicio), "dd/MM/yyyy")} – {format(new Date(resumo.periodo_fim), "dd/MM/yyyy")}</p>
+                        )}
+                        {resumo.operadora && <p><strong>Operadora:</strong> {resumo.operadora}</p>}
+                        {hasPdfMedia && <p><strong>Média PDF:</strong> {resumo.media_periodo?.toFixed(2)}%</p>}
+                        <p><strong>Calculado:</strong> {resumo.calculated_media.toFixed(2)}%</p>
+                      </div>
+                    </TooltipContent>
+                  </UITooltip>
+                </TooltipProvider>
               </div>
-              <p className="text-3xl font-bold">{formatPercent(kpis.mediaSinistralidade)}</p>
-              <div className="flex items-center gap-1 mt-2">
-                {kpis.tendencia > 0 ? (
-                  <TrendingUp className="h-4 w-4 text-destructive" />
+              
+              {/* Valor principal */}
+              <p className="text-3xl font-bold">
+                {kpiSource === "pdf_importado" && hasPdfMedia 
+                  ? formatPercent(resumo.media_periodo!) 
+                  : formatPercent(kpis.mediaSinistralidade)}
+              </p>
+              
+              {/* Badge de fonte */}
+              <div className="flex items-center gap-2 mt-2">
+                {kpiSource === "pdf_importado" && hasPdfMedia ? (
+                  <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
+                    Fonte: Média do Relatório ({resumo.operadora || "PDF"})
+                  </Badge>
                 ) : (
-                  <TrendingDown className="h-4 w-4 text-green-600" />
+                  <>
+                    <Badge variant="outline" className="text-xs">
+                      Fonte: Calculado (mensal)
+                    </Badge>
+                    {kpis.tendencia > 0 ? (
+                      <TrendingUp className="h-4 w-4 text-destructive" />
+                    ) : (
+                      <TrendingDown className="h-4 w-4 text-green-600" />
+                    )}
+                    <p className={`text-xs ${kpis.tendencia > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                      {kpis.tendencia > 0 ? '+' : ''}{kpis.tendencia.toFixed(1)}%
+                    </p>
+                  </>
                 )}
-                <p className={`text-sm ${kpis.tendencia > 0 ? 'text-destructive' : 'text-green-600'}`}>
-                  {kpis.tendencia > 0 ? '+' : ''}{kpis.tendencia.toFixed(1)}% vs período anterior
-                </p>
               </div>
+
+              {/* Debug info para admin_vizio */}
+              {isAdminVizio && (
+                <div className="mt-3 p-2 bg-muted/50 rounded text-xs text-muted-foreground space-y-0.5">
+                  <p>🔧 Debug: source={resumo.source}</p>
+                  <p>media_periodo={resumo.media_periodo ?? "null"}</p>
+                  <p>calculated={resumo.calculated_media.toFixed(2)}</p>
+                  {resumo.periodo_inicio && <p>periodo={resumo.periodo_inicio} → {resumo.periodo_fim}</p>}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -659,6 +737,8 @@ export default function Sinistralidade() {
           queryClient.invalidateQueries({ queryKey: ["sinistralidade-documentos"] });
           queryClient.invalidateQueries({ queryKey: ["import-jobs-sinistralidade"] });
           queryClient.invalidateQueries({ queryKey: ["indicadores-periodo"] });
+          queryClient.invalidateQueries({ queryKey: ["sinistralidade-resumo-periodo"] });
+          queryClient.invalidateQueries({ queryKey: ["sinistralidade-monthly-fallback"] });
         }}
       />
     </AppLayout>

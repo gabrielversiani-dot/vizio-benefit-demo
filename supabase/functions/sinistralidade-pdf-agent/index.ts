@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import * as pdfjsLib from "https://esm.sh/pdfjs-dist@4.4.168/legacy/build/pdf.mjs";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -86,6 +87,8 @@ interface AnalyzeRequest {
   jobId?: string;
   pages?: PageImage[];
   competenciaHint?: string;
+  mode?: 'client_render' | 'server_fallback';
+  requestId?: string;
 }
 
 interface ExtractedData {
@@ -176,6 +179,74 @@ async function callOpenAIVision(pages: PageImage[]): Promise<{ content: string; 
   const data = await response.json();
   console.log('OpenAI Vision response received, tokens:', data.usage?.total_tokens);
 
+  return {
+    content: data.choices[0].message.content,
+    tokensUsed: data.usage?.total_tokens || 0,
+  };
+}
+
+async function extractTextFromPdf(pdfBytes: Uint8Array): Promise<string> {
+  // Note: Server fallback is best-effort. Works for text-based PDFs.
+  // Image-only PDFs may produce little/no text.
+  const loadingTask = pdfjsLib.getDocument({
+    data: pdfBytes,
+    disableWorker: true,
+  } as any);
+
+  const pdf = await loadingTask.promise;
+  const maxPages = Math.min(pdf.numPages, 10);
+
+  let fullText = '';
+  for (let i = 1; i <= maxPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = (textContent.items as any[])
+      .map((it) => (typeof it?.str === 'string' ? it.str : ''))
+      .filter(Boolean)
+      .join(' ');
+
+    if (pageText.trim()) {
+      fullText += `\n\n[PAGE ${i}]\n${pageText}`;
+    }
+  }
+
+  return fullText.trim();
+}
+
+async function callOpenAIText(text: string): Promise<{ content: string; tokensUsed: number }> {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY não configurada');
+  }
+
+  const clipped = text.length > 30000 ? text.slice(0, 30000) : text;
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: `O PDF não pôde ser renderizado em imagens no navegador. A seguir está o TEXTO extraído do PDF.\n\nTarefa: Retorne SOMENTE o JSON no schema especificado.\n\nTEXTO EXTRAÍDO:\n${clipped}`,
+        },
+      ],
+      max_tokens: 4000,
+      temperature: 0.1,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error('OpenAI Text API error:', response.status, error);
+    throw new Error(`OpenAI API error: ${response.status} - ${error}`);
+  }
+
+  const data = await response.json();
   return {
     content: data.choices[0].message.content,
     tokensUsed: data.usage?.total_tokens || 0,
@@ -284,24 +355,93 @@ serve(async (req) => {
 
     // Parse request
     const body: AnalyzeRequest = await req.json();
-    const { action, empresaId, filePath, jobId, pages } = body;
+    const {
+      action,
+      empresaId,
+      filePath,
+      jobId,
+      pages,
+      mode = 'client_render',
+      requestId,
+    } = body;
 
-    console.log('Request:', { action, empresaId, filePath, jobId, pagesCount: pages?.length });
+    console.log('Request:', {
+      requestId,
+      mode,
+      action,
+      empresaId,
+      filePath,
+      jobId,
+      pagesCount: pages?.length,
+    });
 
     if (action === 'analyze') {
-      // ANALYZE: Extract data from PDF images
-      if (!pages || pages.length === 0) {
-        return new Response(JSON.stringify({ error: 'Nenhuma página enviada para análise' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+      // ANALYZE: Extract data from PDF (client-rendered images OR server fallback)
+      let tokensUsed = 0;
+      let extractedData: ExtractedData;
+
+      if ((!pages || pages.length === 0) && mode === 'server_fallback') {
+        if (!filePath) {
+          return new Response(JSON.stringify({ error: 'filePath obrigatório para server_fallback', requestId, mode }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Best-effort server fallback: download PDF and try text extraction.
+        const { data: pdfBlob, error: dlError } = await supabaseAdmin.storage
+          .from('sinistralidade_pdfs')
+          .download(filePath);
+
+        if (dlError || !pdfBlob) {
+          throw new Error(`Erro ao baixar PDF do storage: ${dlError?.message || 'sem detalhes'}`);
+        }
+
+        const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer());
+        const extractedText = await extractTextFromPdf(pdfBytes);
+
+        if (!extractedText || extractedText.trim().length < 200) {
+          extractedData = {
+            document_type: 'unknown',
+            meta: {
+              operadora: 'Unimed Belo Horizonte',
+              empresa_nome: null,
+              produto: null,
+              periodo_inicio: null,
+              periodo_fim: null,
+            },
+            rows: [],
+            indicadores_periodo: { tipo: null, metricas: {}, quebras: {} },
+            validations: {
+              errors: ['Não foi possível extrair texto suficiente do PDF no servidor. Este PDF pode estar em formato de imagem. Tente novamente ou use outro arquivo.'],
+              warnings: [],
+            },
+            summary: { rows: 0, errors: 1, warnings: 0 },
+          };
+        } else {
+          const { content, tokensUsed: t } = await callOpenAIText(extractedText);
+          tokensUsed = t;
+          extractedData = parseExtractedData(content);
+        }
+      } else {
+        if (!pages || pages.length === 0) {
+          return new Response(JSON.stringify({ error: 'Nenhuma página enviada para análise', requestId, mode }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Call OpenAI Vision
+        const { content, tokensUsed: t } = await callOpenAIVision(pages);
+        tokensUsed = t;
+
+        // Parse extracted data
+        extractedData = parseExtractedData(content);
       }
 
-      // Call OpenAI Vision
-      const { content, tokensUsed } = await callOpenAIVision(pages);
-
-      // Parse extracted data
-      const extractedData = parseExtractedData(content);
+      // Ensure validation containers
+      extractedData.validations = extractedData.validations || { errors: [], warnings: [] };
+      extractedData.summary = extractedData.summary || { rows: extractedData.rows?.length || 0, errors: 0, warnings: 0 };
 
       // Validate each row
       let totalErrors = 0;
@@ -391,6 +531,7 @@ serve(async (req) => {
       }
 
       // Log AI usage
+      const pagesCount = pages?.length || 0;
       await supabaseAdmin.from('ai_audit_logs').insert({
         action: 'sinistralidade_pdf_extract',
         job_id: job.id,
@@ -399,7 +540,9 @@ serve(async (req) => {
         tokens_used: tokensUsed,
         duration_ms: Date.now() - startTime,
         model_used: 'gpt-4o',
-        input_summary: `${pages.length} páginas PDF`,
+        input_summary: mode === 'server_fallback'
+          ? `server_fallback (texto)`
+          : `${pagesCount} páginas PDF`,
         output_summary: `${extractedData.rows.length} registros extraídos, tipo: ${extractedData.document_type}`
       });
 
@@ -407,7 +550,10 @@ serve(async (req) => {
         success: true,
         jobId: job.id,
         extractedData,
-        tokensUsed
+        tokensUsed,
+        requestId: requestId || null,
+        mode,
+        durationMs: Date.now() - startTime,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

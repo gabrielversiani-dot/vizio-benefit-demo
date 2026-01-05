@@ -11,7 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
 import { useState, useMemo } from "react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ImportPDFModal } from "@/components/Sinistralidade/ImportPDFModal";
 import { ImportHistorySection } from "@/components/Sinistralidade/ImportHistorySection";
@@ -165,26 +165,33 @@ export default function Sinistralidade() {
 
   // Chart data - Evolução mensal
   const evolucaoMensal = useMemo(() => {
-    const grouped: Record<string, { mes: string; premio: number; sinistros: number; indice: number; count: number }> = {};
+    const grouped: Record<string, { mes: string; premio: number; sinistros: number; indice: number; count: number; indiceImportado: number | null }> = {};
     
     filteredData.forEach(s => {
-      const mes = format(new Date(s.competencia), "MMM/yy", { locale: ptBR });
+      // Usar parseISO para evitar problemas de timezone/off-by-one
+      const dataCompetencia = parseISO(s.competencia);
+      const mes = format(dataCompetencia, "MMM/yy", { locale: ptBR });
       if (!grouped[s.competencia]) {
-        grouped[s.competencia] = { mes, premio: 0, sinistros: 0, indice: 0, count: 0 };
+        grouped[s.competencia] = { mes, premio: 0, sinistros: 0, indice: 0, count: 0, indiceImportado: null };
       }
       grouped[s.competencia].premio += Number(s.valor_premio);
       grouped[s.competencia].sinistros += Number(s.valor_sinistros);
       grouped[s.competencia].indice += Number(s.indice_sinistralidade || 0);
       grouped[s.competencia].count += 1;
+      // Guardar o índice importado do PDF (se existir)
+      if (s.indice_sinistralidade != null) {
+        grouped[s.competencia].indiceImportado = Number(s.indice_sinistralidade);
+      }
     });
 
     return Object.entries(grouped)
-      .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
+      .sort(([a], [b]) => parseISO(a).getTime() - parseISO(b).getTime())
       .map(([, v]) => ({
         mes: v.mes,
         premio: v.premio,
         sinistros: v.sinistros,
         indice: v.count > 0 ? v.indice / v.count : 0,
+        indiceImportado: v.indiceImportado, // IU do PDF
       }));
   }, [filteredData]);
 
@@ -522,14 +529,21 @@ export default function Sinistralidade() {
                       if (!active || !payload || payload.length === 0) return null;
                       const premio = payload.find((p) => p.dataKey === "premio")?.value as number | undefined;
                       const sinistros = payload.find((p) => p.dataKey === "sinistros")?.value as number | undefined;
-                      const iu = premio && premio > 0 ? ((sinistros ?? 0) / premio) * 100 : null;
+                      // Usar o IU importado do PDF (indiceImportado) se disponível, senão calcular
+                      const indiceImportado = (payload[0]?.payload as { indiceImportado?: number | null })?.indiceImportado;
+                      const iuCalculado = premio && premio > 0 ? ((sinistros ?? 0) / premio) * 100 : null;
+                      const iu = indiceImportado != null ? indiceImportado : iuCalculado;
+                      const isImportado = indiceImportado != null;
                       return (
                         <div className="rounded-lg border bg-background p-3 shadow-sm text-sm">
                           <p className="font-medium mb-2">{label}</p>
                           <div className="space-y-1">
                             <p>Prêmio: <span className="font-medium">{formatCurrency(premio ?? 0)}</span></p>
                             <p>Sinistros: <span className="font-medium">{formatCurrency(sinistros ?? 0)}</span></p>
-                            <p>Sinistralidade (IU): <span className="font-medium">{iu != null ? `${iu.toFixed(2).replace(".", ",")}%` : "—"}</span></p>
+                            <p>
+                              Sinistralidade (IU): <span className="font-medium">{iu != null ? `${iu.toFixed(2).replace(".", ",")}%` : "—"}</span>
+                              {isImportado && <span className="ml-1 text-xs text-muted-foreground">(PDF)</span>}
+                            </p>
                           </div>
                         </div>
                       );

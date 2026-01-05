@@ -9,28 +9,34 @@ import {
   SidebarMenuButton,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { useEmpresa } from "@/contexts/EmpresaContext";
+import { usePermissions } from "@/hooks/usePermissions";
 
-const menuItems = [
+// Menu items for all users (clients see only these)
+const clientMenuItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
   { icon: DollarSign, label: "Faturamento", href: "/faturamento" },
   { icon: Activity, label: "Sinistralidade", href: "/sinistralidade" },
   { icon: Shield, label: "Sinistros Vida", href: "/sinistros-vida" },
   { icon: FileSignature, label: "Contratos", href: "/contratos" },
-  { icon: Users, label: "Beneficiários", href: "/beneficiarios" },
-  { icon: RefreshCw, label: "Movimentação de Vidas", href: "/movimentacao-vidas" },
-  { icon: Bot, label: "Central de Importação", href: "/admin/importacao" },
-  { icon: ClipboardList, label: "Demandas", href: "/demandas" },
   { icon: Heart, label: "Promoção de Saúde", href: "/promocao-saude" },
   { icon: FileText, label: "Relatórios", href: "/relatorios" },
 ];
 
-const adminItems = [
+// Admin-only menu items
+const adminMenuItems = [
+  { icon: Users, label: "Beneficiários", href: "/beneficiarios" },
+  { icon: RefreshCw, label: "Movimentação de Vidas", href: "/movimentacao-vidas" },
+  { icon: Bot, label: "Central de Importação", href: "/admin/importacao" },
+  { icon: ClipboardList, label: "Demandas", href: "/demandas" },
+];
+
+// Super admin items (admin_vizio only)
+const superAdminItems = [
   { icon: FlaskConical, label: "Central de Testes", href: "/admin/testes" },
 ];
 
 export function AppSidebar() {
-  const { isAdminVizio } = useEmpresa();
+  const { isAdmin, isAdminVizio, canViewConfiguracoes } = usePermissions();
 
   return (
     <Sidebar>
@@ -48,7 +54,8 @@ export function AppSidebar() {
 
       <SidebarContent className="px-3 py-4">
         <SidebarMenu>
-          {menuItems.map((item) => (
+          {/* Client menu items - visible to all */}
+          {clientMenuItems.map((item) => (
             <SidebarMenuItem key={item.href}>
               <NavLink to={item.href}>
                 {({ isActive }) => (
@@ -64,8 +71,25 @@ export function AppSidebar() {
             </SidebarMenuItem>
           ))}
           
-          {/* Admin-only items */}
-          {isAdminVizio && adminItems.map((item) => (
+          {/* Admin menu items - only for admins */}
+          {isAdmin && adminMenuItems.map((item) => (
+            <SidebarMenuItem key={item.href}>
+              <NavLink to={item.href}>
+                {({ isActive }) => (
+                  <SidebarMenuButton
+                    isActive={isActive}
+                    className="w-full justify-start gap-3 px-3 py-2.5"
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                )}
+              </NavLink>
+            </SidebarMenuItem>
+          ))}
+          
+          {/* Super admin items (admin_vizio only) */}
+          {isAdminVizio && superAdminItems.map((item) => (
             <SidebarMenuItem key={item.href}>
               <NavLink to={item.href}>
                 {({ isActive }) => (
@@ -83,16 +107,19 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-4">
-        <NavLink to="/configuracoes">
-          {({ isActive }) => (
-            <SidebarMenuButton isActive={isActive} className="w-full justify-start gap-3">
-              <Settings className="h-5 w-5" />
-              <span>Configurações</span>
-            </SidebarMenuButton>
-          )}
-        </NavLink>
-      </SidebarFooter>
+      {/* Footer - Configurações only for those with permission */}
+      {canViewConfiguracoes && (
+        <SidebarFooter className="border-t border-sidebar-border p-4">
+          <NavLink to="/configuracoes">
+            {({ isActive }) => (
+              <SidebarMenuButton isActive={isActive} className="w-full justify-start gap-3">
+                <Settings className="h-5 w-5" />
+                <span>Configurações</span>
+              </SidebarMenuButton>
+            )}
+          </NavLink>
+        </SidebarFooter>
+      )}
     </Sidebar>
   );
 }

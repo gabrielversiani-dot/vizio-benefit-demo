@@ -30,6 +30,7 @@ import { getCampanhaDoMes } from "@/config/campanhasMensais";
 import { CampanhaBadge } from "@/components/PromocaoSaude/CampanhaBadge";
 import { AcaoFormModal } from "@/components/PromocaoSaude/AcaoFormModal";
 import { AcaoDetailModal } from "@/components/PromocaoSaude/AcaoDetailModal";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   planejada: { label: "Planejada", color: "bg-blue-500/20 text-blue-700 border-blue-500/30" },
@@ -57,11 +58,13 @@ interface AcaoSaude {
   faturamento_entidades?: { nome: string } | null;
 }
 
+
 const PromocaoSaude = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { empresaSelecionada, isAdminVizio, userRole } = useEmpresa();
+  const { empresaSelecionada, isAdminVizio } = useEmpresa();
   const { user } = useAuth();
+  const { canManagePromocaoSaude, canDownloadMateriais, isAdmin, isClient } = usePermissions();
   
   const [filtroStatus, setFiltroStatus] = useState<string>("todos");
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -69,9 +72,6 @@ const PromocaoSaude = () => {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedAcao, setSelectedAcao] = useState<AcaoSaude | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-
-  // Check if user is admin (can create/edit/delete)
-  const isAdmin = isAdminVizio || userRole === "admin_empresa";
 
   const { data: acoes = [], isLoading } = useQuery({
     queryKey: ["acoes_saude", empresaSelecionada, filtroStatus],

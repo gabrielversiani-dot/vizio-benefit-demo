@@ -10,7 +10,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { DeleteIndicadorModal } from "./DeleteIndicadorModal";
-import { useAuth } from "@/hooks/useAuth";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface IndicadorPeriodo {
   id: string;
@@ -33,28 +33,13 @@ interface IndicadoresPeriodoSectionProps {
 
 export function IndicadoresPeriodoSection({ empresaId }: IndicadoresPeriodoSectionProps) {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { canManageSinistralidade, hasPermission } = usePermissions();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedIndicador, setSelectedIndicador] = useState<IndicadorPeriodo | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Fetch user role
-  const { data: userRoles = [] } = useQuery({
-    queryKey: ["user-roles", user?.id],
-    queryFn: async () => {
-      if (!user?.id) return [];
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id);
-      if (error) throw error;
-      return data.map((r) => r.role);
-    },
-    enabled: !!user?.id,
-  });
-
-  // Check if user can delete (admin_vizio or admin_empresa)
-  const canDelete = userRoles.includes("admin_vizio") || userRoles.includes("admin_empresa");
+  // Check if user can delete
+  const canDelete = hasPermission("sinistralidade:delete");
 
   const { data: indicadores = [], isLoading } = useQuery({
     queryKey: ["indicadores-periodo", empresaId],

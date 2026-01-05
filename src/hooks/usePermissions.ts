@@ -1,54 +1,187 @@
 import { useEmpresa } from "@/contexts/EmpresaContext";
 
 export type Permission = 
+  // Promoção de Saúde
   | "promocao_saude:create"
   | "promocao_saude:edit"
   | "promocao_saude:delete"
   | "promocao_saude:view"
   | "promocao_saude:upload"
   | "promocao_saude:download"
+  // Contratos
   | "contratos:create"
   | "contratos:edit"
   | "contratos:delete"
   | "contratos:view"
-  | "configuracoes:view";
+  | "contratos:download"
+  | "contratos:upload"
+  // Faturamento
+  | "faturamento:create"
+  | "faturamento:edit"
+  | "faturamento:delete"
+  | "faturamento:view"
+  | "faturamento:download"
+  | "faturamento:upload"
+  // Sinistralidade
+  | "sinistralidade:create"
+  | "sinistralidade:edit"
+  | "sinistralidade:delete"
+  | "sinistralidade:view"
+  | "sinistralidade:import"
+  | "sinistralidade:download"
+  // Beneficiários
+  | "beneficiarios:create"
+  | "beneficiarios:edit"
+  | "beneficiarios:delete"
+  | "beneficiarios:view"
+  | "beneficiarios:import"
+  // Movimentação
+  | "movimentacao:create"
+  | "movimentacao:edit"
+  | "movimentacao:view"
+  // Demandas
+  | "demandas:create"
+  | "demandas:edit"
+  | "demandas:view"
+  // Admin
+  | "admin:view"
+  | "admin:import"
+  | "configuracoes:view"
+  | "debug:view";
 
 const rolePermissions: Record<string, Permission[]> = {
   admin_vizio: [
+    // Promoção Saúde - Full
     "promocao_saude:create",
     "promocao_saude:edit",
     "promocao_saude:delete",
     "promocao_saude:view",
     "promocao_saude:upload",
     "promocao_saude:download",
+    // Contratos - Full
     "contratos:create",
     "contratos:edit",
     "contratos:delete",
     "contratos:view",
+    "contratos:download",
+    "contratos:upload",
+    // Faturamento - Full
+    "faturamento:create",
+    "faturamento:edit",
+    "faturamento:delete",
+    "faturamento:view",
+    "faturamento:download",
+    "faturamento:upload",
+    // Sinistralidade - Full
+    "sinistralidade:create",
+    "sinistralidade:edit",
+    "sinistralidade:delete",
+    "sinistralidade:view",
+    "sinistralidade:import",
+    "sinistralidade:download",
+    // Beneficiários - Full
+    "beneficiarios:create",
+    "beneficiarios:edit",
+    "beneficiarios:delete",
+    "beneficiarios:view",
+    "beneficiarios:import",
+    // Movimentação - Full
+    "movimentacao:create",
+    "movimentacao:edit",
+    "movimentacao:view",
+    // Demandas - Full
+    "demandas:create",
+    "demandas:edit",
+    "demandas:view",
+    // Admin - Full
+    "admin:view",
+    "admin:import",
     "configuracoes:view",
+    "debug:view",
   ],
   admin_empresa: [
+    // Promoção Saúde - Full
     "promocao_saude:create",
     "promocao_saude:edit",
     "promocao_saude:delete",
     "promocao_saude:view",
     "promocao_saude:upload",
     "promocao_saude:download",
+    // Contratos - Full
     "contratos:create",
     "contratos:edit",
     "contratos:delete",
     "contratos:view",
+    "contratos:download",
+    "contratos:upload",
+    // Faturamento - Full
+    "faturamento:create",
+    "faturamento:edit",
+    "faturamento:delete",
+    "faturamento:view",
+    "faturamento:download",
+    "faturamento:upload",
+    // Sinistralidade - Full
+    "sinistralidade:create",
+    "sinistralidade:edit",
+    "sinistralidade:delete",
+    "sinistralidade:view",
+    "sinistralidade:import",
+    "sinistralidade:download",
+    // Beneficiários - Full
+    "beneficiarios:create",
+    "beneficiarios:edit",
+    "beneficiarios:delete",
+    "beneficiarios:view",
+    "beneficiarios:import",
+    // Movimentação - Full
+    "movimentacao:create",
+    "movimentacao:edit",
+    "movimentacao:view",
+    // Demandas - Full
+    "demandas:create",
+    "demandas:edit",
+    "demandas:view",
+    // Admin - Partial
     "configuracoes:view",
   ],
   rh_gestor: [
+    // Promoção Saúde - View Only + Download
     "promocao_saude:view",
     "promocao_saude:download",
+    // Contratos - View Only + Download
     "contratos:view",
+    "contratos:download",
+    // Faturamento - View Only + Download
+    "faturamento:view",
+    "faturamento:download",
+    // Sinistralidade - View Only + Download
+    "sinistralidade:view",
+    "sinistralidade:download",
+    // Beneficiários - View Only
+    "beneficiarios:view",
+    // Movimentação - View Only
+    "movimentacao:view",
+    // Demandas - View Only
+    "demandas:view",
   ],
   visualizador: [
+    // Promoção Saúde - View Only + Download
     "promocao_saude:view",
     "promocao_saude:download",
+    // Contratos - View Only + Download
     "contratos:view",
+    "contratos:download",
+    // Faturamento - View Only + Download
+    "faturamento:view",
+    "faturamento:download",
+    // Sinistralidade - View Only + Download
+    "sinistralidade:view",
+    "sinistralidade:download",
+    // Beneficiários - View Only
+    "beneficiarios:view",
+    // Movimentação - View Only
+    "movimentacao:view",
   ],
 };
 
@@ -61,17 +194,77 @@ export function usePermissions() {
     return permissions.includes(permission);
   };
 
+  // Admin status (full CRUD access)
   const isAdmin = isAdminVizio || userRole === "admin_empresa";
+  
+  // Client status (read-only access)
+  const isClient = userRole === "rh_gestor" || userRole === "visualizador";
+  
+  // Module-specific permissions
   const canManagePromocaoSaude = hasPermission("promocao_saude:create");
   const canViewPromocaoSaude = hasPermission("promocao_saude:view");
   const canDownloadMateriais = hasPermission("promocao_saude:download");
+  
+  const canManageFaturamento = hasPermission("faturamento:create");
+  const canViewFaturamento = hasPermission("faturamento:view");
+  const canDownloadFaturamento = hasPermission("faturamento:download");
+  
+  const canManageContratos = hasPermission("contratos:create");
+  const canViewContratos = hasPermission("contratos:view");
+  const canDownloadContratos = hasPermission("contratos:download");
+  
+  const canManageSinistralidade = hasPermission("sinistralidade:edit");
+  const canImportSinistralidade = hasPermission("sinistralidade:import");
+  const canViewSinistralidade = hasPermission("sinistralidade:view");
+  const canDownloadSinistralidade = hasPermission("sinistralidade:download");
+  
+  const canManageBeneficiarios = hasPermission("beneficiarios:create");
+  const canImportBeneficiarios = hasPermission("beneficiarios:import");
+  const canViewBeneficiarios = hasPermission("beneficiarios:view");
+  
+  const canViewAdmin = hasPermission("admin:view");
+  const canImportAdmin = hasPermission("admin:import");
+  const canViewConfiguracoes = hasPermission("configuracoes:view");
+  const canViewDebug = hasPermission("debug:view");
 
   return {
+    // Core
     hasPermission,
+    userRole,
     isAdmin,
+    isClient,
+    isAdminVizio,
+    
+    // Promoção de Saúde
     canManagePromocaoSaude,
     canViewPromocaoSaude,
     canDownloadMateriais,
-    userRole,
+    
+    // Faturamento
+    canManageFaturamento,
+    canViewFaturamento,
+    canDownloadFaturamento,
+    
+    // Contratos
+    canManageContratos,
+    canViewContratos,
+    canDownloadContratos,
+    
+    // Sinistralidade
+    canManageSinistralidade,
+    canImportSinistralidade,
+    canViewSinistralidade,
+    canDownloadSinistralidade,
+    
+    // Beneficiários
+    canManageBeneficiarios,
+    canImportBeneficiarios,
+    canViewBeneficiarios,
+    
+    // Admin
+    canViewAdmin,
+    canImportAdmin,
+    canViewConfiguracoes,
+    canViewDebug,
   };
 }

@@ -332,12 +332,12 @@ export default function Sinistralidade() {
           open={importModalOpen}
           onOpenChange={setImportModalOpen}
           onImportComplete={() => {
-            queryClient.invalidateQueries({ queryKey: ["sinistralidade"] });
+            queryClient.invalidateQueries({ queryKey: ["sinistralidade", empresaSelecionada] });
             queryClient.invalidateQueries({ queryKey: ["sinistralidade-documentos"] });
             queryClient.invalidateQueries({ queryKey: ["import-jobs-sinistralidade"] });
             queryClient.invalidateQueries({ queryKey: ["indicadores-periodo"] });
-            queryClient.invalidateQueries({ queryKey: ["sinistralidade-resumo-periodo"] });
-            queryClient.invalidateQueries({ queryKey: ["sinistralidade-monthly-fallback"] });
+            queryClient.invalidateQueries({ queryKey: ["sinistralidade-resumo-periodo", empresaSelecionada] });
+            queryClient.invalidateQueries({ queryKey: ["sinistralidade-monthly-fallback", empresaSelecionada] });
           }}
         />
       </AppLayout>
@@ -480,14 +480,24 @@ export default function Sinistralidade() {
               </div>
               <p className="text-2xl font-bold">
                 {kpiSource === "pdf_importado" && hasPdfMedia && resumo.vidas_ativas_media_periodo != null
-                  ? resumo.vidas_ativas_media_periodo.toLocaleString('pt-BR')
-                  : "—"}
+                  ? resumo.vidas_ativas_media_periodo.toLocaleString("pt-BR")
+                  : resumo.calculated_vidas > 0
+                    ? Math.round(resumo.calculated_vidas).toLocaleString("pt-BR")
+                    : "—"}
               </p>
               <p className="text-xs text-muted-foreground mt-1.5">
                 {kpiSource === "pdf_importado" && hasPdfMedia && resumo.vidas_ativas_media_periodo != null
                   ? "Contingente médio do período"
-                  : "Disponível após importação"}
+                  : resumo.calculated_vidas > 0
+                    ? "Média calculada (mensal)"
+                    : "Importe um PDF com contingente"}
               </p>
+
+              {isAdminVizio && import.meta.env.DEV && (
+                <p className="mt-2 text-[10px] font-mono text-muted-foreground">
+                  debug vidas_ativas_media_periodo: {String(resumo.vidas_ativas_media_periodo)} | indicador_id: {String(resumo.indicador_id)}
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -703,12 +713,12 @@ export default function Sinistralidade() {
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
         onImportComplete={() => {
-          queryClient.invalidateQueries({ queryKey: ["sinistralidade"] });
+          queryClient.invalidateQueries({ queryKey: ["sinistralidade", empresaSelecionada] });
           queryClient.invalidateQueries({ queryKey: ["sinistralidade-documentos"] });
           queryClient.invalidateQueries({ queryKey: ["import-jobs-sinistralidade"] });
           queryClient.invalidateQueries({ queryKey: ["indicadores-periodo"] });
-          queryClient.invalidateQueries({ queryKey: ["sinistralidade-resumo-periodo"] });
-          queryClient.invalidateQueries({ queryKey: ["sinistralidade-monthly-fallback"] });
+          queryClient.invalidateQueries({ queryKey: ["sinistralidade-resumo-periodo", empresaSelecionada] });
+          queryClient.invalidateQueries({ queryKey: ["sinistralidade-monthly-fallback", empresaSelecionada] });
         }}
       />
     </AppLayout>

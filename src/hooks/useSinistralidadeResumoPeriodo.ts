@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 export type PeriodoSource = "pdf_media" | "calculated";
 
 export interface SinistralidadeResumoPeriodo {
+  indicador_id: string | null;
   media_periodo: number | null;
   premio_medio_periodo: number | null;
   sinistros_medio_periodo: number | null;
@@ -32,7 +33,9 @@ export function useSinistralidadeResumoPeriodo(
 
       const { data, error } = await supabase
         .from("sinistralidade_indicadores_periodo")
-        .select("id, empresa_id, periodo_inicio, periodo_fim, operadora, media_periodo, premio_medio_periodo, sinistros_medio_periodo, vidas_ativas_media_periodo, import_job_id")
+        .select(
+          "id, empresa_id, created_at, periodo_inicio, periodo_fim, operadora, media_periodo, premio_medio_periodo, sinistros_medio_periodo, vidas_ativas_media_periodo, metricas, import_job_id"
+        )
         .eq("empresa_id", empresaId)
         .not("media_periodo", "is", null)
         .order("periodo_fim", { ascending: false })
@@ -44,10 +47,15 @@ export function useSinistralidadeResumoPeriodo(
         throw error;
       }
 
-      console.log("[useSinistralidadeResumoPeriodo] Fetched indicador:", data);
+      if (import.meta.env.DEV) {
+        console.log("[useSinistralidadeResumoPeriodo] indicador:", data);
+      }
+
       return data;
     },
     enabled: !!empresaId,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   // Fetch monthly data for fallback calculation
@@ -61,7 +69,7 @@ export function useSinistralidadeResumoPeriodo(
 
       const { data, error } = await supabase
         .from("sinistralidade")
-        .select("valor_premio, valor_sinistros, indice_sinistralidade, competencia")
+        .select("valor_premio, valor_sinistros, indice_sinistralidade, competencia, vidas_ativas")
         .eq("empresa_id", empresaId)
         .gte("competencia", mesesAtras.toISOString().split("T")[0])
         .order("competencia", { ascending: true });
@@ -78,18 +86,27 @@ export function useSinistralidadeResumoPeriodo(
 
   // Calculate fallback values from monthly data
   const monthlyData = monthlyQuery.data || [];
-  const totalPremio = monthlyData.reduce((acc, s) => acc + Number(s.valor_premio || 0), 0);
-  const totalSinistros = monthlyData.reduce((acc, s) => acc + Number(s.valor_sinistros || 0), 0);
+  const totalPremio = monthlyData.reduce((acc, s) => acc + Number((s as any).valor_premio || 0), 0);
+  const totalSinistros = monthlyData.reduce((acc, s) => acc + Number((s as any).valor_sinistros || 0), 0);
   const calculatedMedia = totalPremio > 0 ? (totalSinistros / totalPremio) * 100 : 0;
   const avgPremio = monthlyData.length > 0 ? totalPremio / monthlyData.length : 0;
   const avgSinistros = monthlyData.length > 0 ? totalSinistros / monthlyData.length : 0;
 
+  const vidasVals = monthlyData
+    .map((s) => (s as any).vidas_ativas)
+    .filter((v) => v != null)
+    .map((v) => Number(v));
+  const avgVidasAtivas = vidasVals.length > 0 ? vidasVals.reduce((acc, v) => acc + v, 0) / vidasVals.length : 0;
+
   // Determine which source to use
   const indicador = indicadorQuery.data as {
+    id?: string;
+    created_at?: string;
     media_periodo?: number | null;
     premio_medio_periodo?: number | null;
     sinistros_medio_periodo?: number | null;
     vidas_ativas_media_periodo?: number | null;
+    metricas?: unknown | null;
     periodo_inicio?: string | null;
     periodo_fim?: string | null;
     operadora?: string | null;
@@ -97,11 +114,18 @@ export function useSinistralidadeResumoPeriodo(
   } | null;
   const hasPdfMedia = indicador?.media_periodo != null;
 
+  const vidasAtivasMedia =
+    indicador?.vidas_ativas_media_periodo ??
+    (typeof indicador?.metricas === "object" && indicador?.metricas != null
+      ? (indicador.metricas as any)?.vidas_ativas_media_periodo ?? null
+      : null);
+
   const resumo: SinistralidadeResumoPeriodo = {
+    indicador_id: indicador?.id ?? null,
     media_periodo: indicador?.media_periodo ?? null,
     premio_medio_periodo: indicador?.premio_medio_periodo ?? null,
     sinistros_medio_periodo: indicador?.sinistros_medio_periodo ?? null,
-    vidas_ativas_media_periodo: indicador?.vidas_ativas_media_periodo ?? null,
+    vidas_ativas_media_periodo: vidasAtivasMedia,
     periodo_inicio: indicador?.periodo_inicio || null,
     periodo_fim: indicador?.periodo_fim || null,
     operadora: indicador?.operadora || null,
@@ -110,7 +134,7 @@ export function useSinistralidadeResumoPeriodo(
     calculated_media: calculatedMedia,
     calculated_premio: avgPremio,
     calculated_sinistros: avgSinistros,
-    calculated_vidas: 0, // No fallback for vidas from monthly data
+    calculated_vidas: avgVidasAtivas,
   };
 
   // Final media value to use

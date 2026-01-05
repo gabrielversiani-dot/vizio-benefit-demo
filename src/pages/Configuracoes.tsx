@@ -19,7 +19,8 @@ import {
   Trash2,
   LogOut,
   AlertTriangle,
-  Rocket
+  Rocket,
+  Building2
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,6 +35,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SetupWizard } from "@/components/Setup/SetupWizard";
+import { FiliaisSection } from "@/components/Configuracoes/FiliaisSection";
 
 export default function Configuracoes() {
   const { signOut, user } = useAuth();
@@ -383,40 +385,43 @@ export default function Configuracoes() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Zona de Perigo - apenas para admin_vizio */}
-          {isAdminVizio && (
-            <Card className="border-destructive">
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center">
-                    <AlertTriangle className="h-5 w-5 text-destructive" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-destructive">Zona de Perigo</CardTitle>
-                    <CardDescription>Ações irreversíveis</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Limpar todos os dados</Label>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Remove todas as empresas, perfis e roles (exceto seu usuário atual). Esta ação não pode ser desfeita.
-                  </p>
-                  <Button 
-                    variant="destructive" 
-                    className="w-full gap-2"
-                    onClick={() => setShowDeleteConfirm(true)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Apagar Todos os Dados
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
+
+        {/* Filiais Section - full width */}
+        <FiliaisSection />
+
+        {/* Zona de Perigo - apenas para admin_vizio */}
+        {isAdminVizio && (
+          <Card className="border-destructive">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                </div>
+                <div>
+                  <CardTitle className="text-destructive">Zona de Perigo</CardTitle>
+                  <CardDescription>Ações irreversíveis</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Limpar todos os dados</Label>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Remove todas as empresas, perfis e roles (exceto seu usuário atual). Esta ação não pode ser desfeita.
+                </p>
+                <Button 
+                  variant="destructive" 
+                  className="w-full gap-2"
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Apagar Todos os Dados
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Confirm Delete Dialog */}

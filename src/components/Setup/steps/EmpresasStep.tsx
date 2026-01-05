@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Loader2, Save, AlertTriangle, Info, Eye, FileCheck, Sparkles } from "lucide-react";
+import { CheckCircle2, Loader2, Save, AlertTriangle, Info, Eye, FileCheck, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { EditableGrid, GridColumn, GridRow } from "../EditableGrid";
@@ -11,6 +11,17 @@ import { UndoBanner } from "../UndoBanner";
 import { AIAssistantModal } from "../AIAssistantModal";
 import { useSetupDraft } from "@/hooks/useSetupDraft";
 import { useSetupUndo } from "@/hooks/useSetupUndo";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface EmpresasStepProps {
   onStatusUpdate: (status: { created: number; updated: number; errors: number }) => void;
@@ -136,8 +147,9 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
   const [progress, setProgress] = useState(0);
   const [activeUndo, setActiveUndo] = useState<{ id: string; count: number; expiresAt: string } | null>(null);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const hasRestoredRef = useRef(false);
   
-  const { saveDraft, getStepDraft, isLoaded } = useSetupDraft();
+  const { saveDraft, getStepDraft, clearStepDraft, isLoaded, wasRestoreShown, markRestoreShown, hasStepDraft } = useSetupDraft();
   const { createSnapshot, getSnapshot, removeSnapshot } = useSetupUndo();
 
   // Handle AI parsed data
@@ -189,16 +201,36 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
     });
   };
 
-  // Load draft on mount
+  // Load draft on mount - only once
   useEffect(() => {
-    if (isLoaded) {
-      const draftData = getStepDraft('empresas');
-      if (draftData.length > 0) {
-        setRows(draftData);
-        toast.info('Rascunho restaurado', { description: `${draftData.length} empresa(s)` });
+    // Guard: only restore once per component lifecycle and session
+    if (!isLoaded || hasRestoredRef.current) return;
+    
+    const draftData = getStepDraft('empresas');
+    if (draftData.length > 0) {
+      setRows(draftData);
+      hasRestoredRef.current = true;
+      
+      // Only show toast if not already shown in this session
+      if (!wasRestoreShown('empresas')) {
+        markRestoreShown('empresas');
+        toast.info('Rascunho restaurado', { 
+          description: `${draftData.length} empresa(s)`,
+          action: {
+            label: 'Dispensar',
+            onClick: () => {}, // Toast will dismiss automatically
+          },
+        });
       }
     }
-  }, [isLoaded, getStepDraft]);
+  }, [isLoaded]); // Only depend on isLoaded, not getStepDraft
+
+  // Handle clearing draft
+  const handleClearDraft = () => {
+    clearStepDraft('empresas');
+    setRows([]);
+    toast.success('Rascunho limpo');
+  };
 
   // Auto-save draft
   const handleAutoSave = (updatedRows: GridRow[]) => {
@@ -446,6 +478,34 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
             <Sparkles className="h-4 w-4" />
             Assistente IA
           </Button>
+          
+          {/* Clear Draft Button */}
+          {rows.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground">
+                  <Trash2 className="h-4 w-4" />
+                  Limpar rascunho
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Limpar rascunho?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Isso removerá todos os dados não salvos da etapa de Empresas. 
+                    Esta ação não pode ser desfeita.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearDraft}>
+                    Limpar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          
           {hasErrors && <span className="text-sm text-destructive">Corrija os erros antes de aplicar</span>}
         </div>
         <div className="flex gap-2">

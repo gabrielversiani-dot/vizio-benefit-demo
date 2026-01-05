@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, FileText, Loader2, CheckCircle, AlertTriangle, XCircle, Sparkles, Building2, Save, Edit } from "lucide-react";
+import { Upload, FileText, Loader2, CheckCircle, AlertTriangle, XCircle, Sparkles, Building2, Save, Edit, Copy, Bug, Server } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
@@ -64,6 +64,7 @@ interface ImportPDFModalProps {
 }
 
 type Step = 'upload' | 'analyzing' | 'preview' | 'saving' | 'applying';
+type AnalyzeMode = 'client_render' | 'server_fallback';
 
 export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportPDFModalProps) {
   const { toast } = useToast();
@@ -78,6 +79,14 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
   const [changesSaved, setChangesSaved] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
 
+  // Debug/meta
+  const [analysisMode, setAnalysisMode] = useState<AnalyzeMode>('client_render');
+  const [analysisRequestId, setAnalysisRequestId] = useState<string | null>(null);
+  const [analysisDurationMs, setAnalysisDurationMs] = useState<number | null>(null);
+  const [showDebugDetails, setShowDebugDetails] = useState(false);
+
+  const workerSrc = pdfjsLib?.GlobalWorkerOptions?.workerSrc || '';
+
   // Fetch empresas
   const { data: empresas = [] } = useQuery({
     queryKey: ["empresas-select"],
@@ -90,6 +99,23 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
       if (error) throw error;
       return data as Empresa[];
     },
+  });
+
+  // Diagnostics (admin_vizio only)
+  const { data: isAdminVizio = false } = useQuery({
+    queryKey: ["import-pdf-is-admin-vizio"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return false;
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin_vizio')
+        .maybeSingle();
+      return !!data;
+    },
+    enabled: open,
   });
 
   // Detect dirty state (changes not saved)
@@ -178,17 +204,42 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
       return;
     }
 
-    setStep('analyzing');
-    setProgress(0);
+    const requestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+    const startedAt = performance.now();
+
+    setAnalysisRequestId(requestId);
+    setAnalysisDurationMs(null);
+    setShowDebugDetails(false);
     setLastError(null);
 
+    setStep('analyzing');
+    setProgress(0);
+
+    let mode: AnalyzeMode = 'client_render';
+    let pages: Array<{ pageNumber: number; imageBase64: string }> = [];
+
     try {
-      // 1. Render PDF to images
-      toast({ title: "Processando PDF...", description: "Convertendo páginas em imagens." });
-      const pages = await renderPdfToImages(selectedFile);
+      // 1) Try client-side render (worker local)
+      try {
+        toast({ title: "Processando PDF...", description: "Convertendo páginas em imagens." });
+        pages = await renderPdfToImages(selectedFile);
+        if (!pages || pages.length === 0) {
+          throw new Error('Nenhuma página renderizada');
+        }
+      } catch (err) {
+        console.warn('Client PDF render failed, switching to server fallback:', err);
+        mode = 'server_fallback';
+        pages = [];
+        toast({
+          title: "Modo compatibilidade",
+          description: "Falha ao processar no navegador; analisando no servidor..."
+        });
+      }
+
+      setAnalysisMode(mode);
       setProgress(30);
 
-      // 2. Upload PDF to storage (sinistralidade_pdfs bucket)
+      // 2) Upload PDF to storage (required for server fallback)
       toast({ title: "Enviando arquivo...", description: "Salvando PDF no servidor." });
       const now = new Date();
       const year = now.getFullYear();
@@ -196,42 +247,51 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
       const timestamp = Date.now();
       const sanitizedName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const filePath = `${selectedEmpresaId}/unimed_bh/${year}/${month}/${timestamp}-${sanitizedName}`;
-      
+
       const { error: uploadError } = await supabase.storage
         .from('sinistralidade_pdfs')
         .upload(filePath, selectedFile);
 
       if (uploadError) {
-        console.error('Upload error:', uploadError);
-        // Continue even if upload fails - we can still analyze
+        throw new Error(`Falha no upload do PDF: ${uploadError.message}`);
       }
+
       setProgress(40);
 
-      // 3. Call AI agent
-      toast({ title: "Analisando com IA...", description: "Extraindo dados do relatório." });
-      
+      // 3) Call AI agent
+      toast({ title: "Analisando com IA...", description: mode === 'server_fallback' ? "Processando PDF no servidor." : "Extraindo dados do relatório." });
+
       const { data: session } = await supabase.auth.getSession();
-      
+
+      const body: any = {
+        action: 'analyze',
+        empresaId: selectedEmpresaId,
+        filePath,
+        requestId,
+        mode,
+      };
+      if (mode === 'client_render') {
+        body.pages = pages;
+      }
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sinistralidade-pdf-agent`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session?.session?.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          action: 'analyze',
-          empresaId: selectedEmpresaId,
-          filePath,
-          pages
-        })
+        body: JSON.stringify(body)
       });
 
       setProgress(80);
 
+      const durationMs = Math.round(performance.now() - startedAt);
+      setAnalysisDurationMs(durationMs);
+
       if (!response.ok) {
-        const error = await response.json();
-        setLastError(JSON.stringify(error, null, 2));
-        throw new Error(error.error || 'Erro na análise');
+        const errorText = await response.text();
+        setLastError(errorText);
+        throw new Error('Erro na análise');
       }
 
       const result = await response.json();
@@ -243,7 +303,7 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
       setJobId(result.jobId);
       setChangesSaved(true);
 
-      // 4. Save document record in sinistralidade_documentos
+      // 4) Save document record in sinistralidade_documentos
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const competencias = result.extractedData.rows
@@ -262,7 +322,7 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
             file_path: filePath,
             file_name: selectedFile.name,
             file_size: selectedFile.size,
-            status: 'analyzed',
+            status: result.extractedData.summary?.errors > 0 ? 'failed' : 'analyzed',
             import_job_id: result.jobId,
             ai_summary: result.extractedData.summary ? 
               `${result.extractedData.summary.rows} registros, ${result.extractedData.summary.errors} erros, ${result.extractedData.summary.warnings} avisos` : null,
@@ -279,12 +339,18 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
 
     } catch (error) {
       console.error('Analysis error:', error);
+      if (!lastError) {
+        const fallback = error instanceof Error
+          ? JSON.stringify({ message: error.message, stack: error.stack }, null, 2)
+          : JSON.stringify({ error }, null, 2);
+        setLastError(fallback);
+      }
+      setStep('upload');
       toast({
         title: "Erro na análise",
-        description: error instanceof Error ? error.message : "Falha ao processar PDF.",
+        description: "Clique em 'Ver detalhes' para copiar o erro completo.",
         variant: "destructive"
       });
-      setStep('upload');
     }
   };
 
@@ -495,11 +561,50 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
 
               {lastError && (
                 <Alert variant="destructive">
-                  <AlertDescription>
-                    <details>
-                      <summary className="cursor-pointer font-medium">Ver erro completo</summary>
-                      <pre className="mt-2 text-xs overflow-auto max-h-32">{lastError}</pre>
-                    </details>
+                  <AlertDescription className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">Falha na análise.</span>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowDebugDetails((v) => !v)}
+                        >
+                          <Bug className="h-4 w-4 mr-2" />
+                          Ver detalhes
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={async () => {
+                            const payload = JSON.stringify({
+                              requestId: analysisRequestId,
+                              mode: analysisMode,
+                              duration_ms: analysisDurationMs,
+                              workerSrc,
+                              error: lastError,
+                            }, null, 2);
+                            await navigator.clipboard.writeText(payload);
+                            toast({ title: "Copiado", description: "Detalhes copiados para a área de transferência." });
+                          }}
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          Copiar
+                        </Button>
+                      </div>
+                    </div>
+
+                    {showDebugDetails && (
+                      <pre className="text-xs overflow-auto max-h-48 rounded-md bg-muted p-3">{JSON.stringify({
+                        requestId: analysisRequestId,
+                        mode: analysisMode,
+                        duration_ms: analysisDurationMs,
+                        workerSrc,
+                        error: lastError,
+                      }, null, 2)}</pre>
+                    )}
                   </AlertDescription>
                 </Alert>
               )}
@@ -513,6 +618,26 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
                     <li>• Relatório de Consultas</li>
                     <li>• Relatório de Internações</li>
                   </ul>
+
+                  {isAdminVizio && (
+                    <div className="mt-4 rounded-lg border bg-background p-3">
+                      <div className="flex items-center gap-2 font-medium">
+                        <Bug className="h-4 w-4" />
+                        Diagnóstico rápido (worker PDF.js)
+                      </div>
+                      <div className="mt-2 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-muted-foreground">workerSrc</span>
+                          <Badge variant="outline" className="font-mono max-w-[65%] truncate">{workerSrc || 'vazio'}</Badge>
+                        </div>
+                        {(!workerSrc || workerSrc.includes('cdnjs')) && (
+                          <div className="mt-2 text-destructive">
+                            Alerta: workerSrc inválido (vazio ou contém cdnjs). O processamento no navegador pode falhar.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -527,22 +652,26 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
             </div>
           )}
 
-          {/* Step 2: Analyzing */}
-          {step === 'analyzing' && (
-            <div className="py-12 text-center space-y-6">
-              <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-              <div className="space-y-2">
-                <p className="font-medium">Analisando documento...</p>
-                <p className="text-sm text-muted-foreground">
-                  {progress < 30 ? 'Convertendo páginas em imagens...' :
-                   progress < 40 ? 'Enviando arquivo...' :
-                   progress < 80 ? 'Extraindo dados com IA...' :
-                   'Finalizando análise...'}
-                </p>
-              </div>
-              <Progress value={progress} className="w-64 mx-auto" />
-            </div>
-          )}
+           {/* Step 2: Analyzing */}
+           {step === 'analyzing' && (
+             <div className="py-12 text-center space-y-6">
+               <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+               <div className="space-y-2">
+                 <p className="font-medium">
+                   {analysisMode === 'server_fallback' ? 'Analisando no servidor (modo compatibilidade)...' : 'Analisando documento...'}
+                 </p>
+                 <p className="text-sm text-muted-foreground">
+                   {analysisMode === 'server_fallback'
+                     ? 'Baixando PDF e tentando extrair texto automaticamente...'
+                     : (progress < 30 ? 'Convertendo páginas em imagens...' :
+                        progress < 40 ? 'Enviando arquivo...' :
+                        progress < 80 ? 'Extraindo dados com IA...' :
+                        'Finalizando análise...')}
+                 </p>
+               </div>
+               <Progress value={progress} className="w-64 mx-auto" />
+             </div>
+           )}
 
           {/* Step 3: Preview */}
           {step === 'preview' && extractedData && (

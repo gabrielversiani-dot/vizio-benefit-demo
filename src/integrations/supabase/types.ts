@@ -316,11 +316,72 @@ export type Database = {
           },
         ]
       }
+      contrato_documentos: {
+        Row: {
+          arquivo_nome: string
+          contrato_id: string
+          created_at: string
+          empresa_id: string
+          id: string
+          mime_type: string
+          storage_bucket: string
+          storage_path: string
+          tamanho_bytes: number
+          tipo_documento: string
+          uploaded_by: string | null
+          versao: number
+        }
+        Insert: {
+          arquivo_nome: string
+          contrato_id: string
+          created_at?: string
+          empresa_id: string
+          id?: string
+          mime_type: string
+          storage_bucket?: string
+          storage_path: string
+          tamanho_bytes: number
+          tipo_documento?: string
+          uploaded_by?: string | null
+          versao?: number
+        }
+        Update: {
+          arquivo_nome?: string
+          contrato_id?: string
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          mime_type?: string
+          storage_bucket?: string
+          storage_path?: string
+          tamanho_bytes?: number
+          tipo_documento?: string
+          uploaded_by?: string | null
+          versao?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contrato_documentos_contrato_id_fkey"
+            columns: ["contrato_id"]
+            isOneToOne: false
+            referencedRelation: "contratos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contrato_documentos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contratos: {
         Row: {
           arquivo_nome: string
           arquivo_url: string
           assinado: boolean
+          competencia_referencia: string | null
           contrato_pai_id: string | null
           created_at: string
           criado_por: string
@@ -328,9 +389,13 @@ export type Database = {
           data_fim: string
           data_inicio: string
           empresa_id: string
+          filial_id: string | null
           id: string
           numero_contrato: string | null
           observacoes: string | null
+          operadora: string | null
+          produto: string | null
+          reajuste_percentual: number | null
           status: Database["public"]["Enums"]["status_contrato"]
           tipo: Database["public"]["Enums"]["tipo_documento_contrato"]
           titulo: string
@@ -342,6 +407,7 @@ export type Database = {
           arquivo_nome: string
           arquivo_url: string
           assinado?: boolean
+          competencia_referencia?: string | null
           contrato_pai_id?: string | null
           created_at?: string
           criado_por: string
@@ -349,9 +415,13 @@ export type Database = {
           data_fim: string
           data_inicio: string
           empresa_id: string
+          filial_id?: string | null
           id?: string
           numero_contrato?: string | null
           observacoes?: string | null
+          operadora?: string | null
+          produto?: string | null
+          reajuste_percentual?: number | null
           status?: Database["public"]["Enums"]["status_contrato"]
           tipo?: Database["public"]["Enums"]["tipo_documento_contrato"]
           titulo: string
@@ -363,6 +433,7 @@ export type Database = {
           arquivo_nome?: string
           arquivo_url?: string
           assinado?: boolean
+          competencia_referencia?: string | null
           contrato_pai_id?: string | null
           created_at?: string
           criado_por?: string
@@ -370,9 +441,13 @@ export type Database = {
           data_fim?: string
           data_inicio?: string
           empresa_id?: string
+          filial_id?: string | null
           id?: string
           numero_contrato?: string | null
           observacoes?: string | null
+          operadora?: string | null
+          produto?: string | null
+          reajuste_percentual?: number | null
           status?: Database["public"]["Enums"]["status_contrato"]
           tipo?: Database["public"]["Enums"]["tipo_documento_contrato"]
           titulo?: string
@@ -393,6 +468,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contratos_filial_id_fkey"
+            columns: ["filial_id"]
+            isOneToOne: false
+            referencedRelation: "faturamento_entidades"
             referencedColumns: ["id"]
           },
         ]

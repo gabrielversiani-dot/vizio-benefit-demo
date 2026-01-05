@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
 import { ImportJobChecklist } from "@/components/Admin/ImportJobChecklist";
 import { PostApprovalValidation } from "@/components/Admin/PostApprovalValidation";
+import { ExportJobCSV } from "@/components/Admin/ExportJobCSV";
 
 type ImportJob = {
   id: string;
@@ -396,6 +397,16 @@ const ImportacaoJobPreview = () => {
                       : "Nenhuma linha encontrada"}
                   </CardDescription>
                 </div>
+                
+                {/* Export Buttons */}
+                <ExportJobCSV
+                  jobId={job.id}
+                  dataType={job.data_type}
+                  totalRows={job.total_rows}
+                  statusFilter={statusFilter}
+                  searchQuery={debouncedSearch}
+                  filteredCount={totalCount}
+                />
               </div>
               
               {/* Filter Controls */}

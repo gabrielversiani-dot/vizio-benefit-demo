@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Upload, FileText, Bot, Loader2, History, AlertCircle, CheckCircle, XCircle, Clock, Download } from "lucide-react";
+import { Upload, FileText, Bot, Loader2, History, AlertCircle, CheckCircle, XCircle, Clock, Download, GitBranch } from "lucide-react";
 import { ImportTestGuide } from "@/components/Admin/ImportTestGuide";
 
 // CSV Templates
@@ -398,9 +398,14 @@ const ImportacaoIndex = () => {
                 </TableHeader>
                 <TableBody>
                   {recentJobs.map((job) => (
-                    <TableRow key={job.id}>
+                    <TableRow key={job.id} className={job.parent_job_id ? "bg-muted/30" : ""}>
                       <TableCell className="font-mono text-sm max-w-[200px] truncate">
-                        {job.arquivo_nome}
+                        <div className="flex items-center gap-2">
+                          {job.parent_job_id && (
+                            <GitBranch className="h-3 w-3 text-primary flex-shrink-0" />
+                          )}
+                          <span className={job.parent_job_id ? "pl-2" : ""}>{job.arquivo_nome}</span>
+                        </div>
                       </TableCell>
                       <TableCell>{getDataTypeLabel(job.data_type)}</TableCell>
                       <TableCell>

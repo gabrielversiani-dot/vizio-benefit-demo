@@ -593,6 +593,8 @@ export type Database = {
         Row: {
           ai_suggestions: Json | null
           ai_summary: string | null
+          applied_at: string | null
+          applied_by: string | null
           aprovado_por: string | null
           arquivo_nome: string
           arquivo_url: string
@@ -605,6 +607,7 @@ export type Database = {
           empresa_id: string
           error_rows: number | null
           id: string
+          parent_job_id: string | null
           status: Database["public"]["Enums"]["import_job_status"]
           total_rows: number | null
           updated_at: string
@@ -614,6 +617,8 @@ export type Database = {
         Insert: {
           ai_suggestions?: Json | null
           ai_summary?: string | null
+          applied_at?: string | null
+          applied_by?: string | null
           aprovado_por?: string | null
           arquivo_nome: string
           arquivo_url: string
@@ -626,6 +631,7 @@ export type Database = {
           empresa_id: string
           error_rows?: number | null
           id?: string
+          parent_job_id?: string | null
           status?: Database["public"]["Enums"]["import_job_status"]
           total_rows?: number | null
           updated_at?: string
@@ -635,6 +641,8 @@ export type Database = {
         Update: {
           ai_suggestions?: Json | null
           ai_summary?: string | null
+          applied_at?: string | null
+          applied_by?: string | null
           aprovado_por?: string | null
           arquivo_nome?: string
           arquivo_url?: string
@@ -647,6 +655,7 @@ export type Database = {
           empresa_id?: string
           error_rows?: number | null
           id?: string
+          parent_job_id?: string | null
           status?: Database["public"]["Enums"]["import_job_status"]
           total_rows?: number | null
           updated_at?: string
@@ -659,6 +668,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_jobs_parent_job_id_fkey"
+            columns: ["parent_job_id"]
+            isOneToOne: false
+            referencedRelation: "import_jobs"
             referencedColumns: ["id"]
           },
         ]

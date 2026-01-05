@@ -34,8 +34,10 @@ Sua tarefa é analisar imagens de páginas de PDF e extrair dados estruturados s
 
 TIPOS DE DOCUMENTOS:
 1. "demonstrativo_resultado" - Demonstrativo de Resultado com colunas por competência (12/2024, 01/2025, etc.)
-   - Extrair: Faturamento, Custo Assistencial, IU (Índice de Utilização/Sinistralidade) por competência
+   - Extrair: Faturamento, Custo Assistencial, IU (Índice de Utilização/Sinistralidade), Contingente, Média por competência
    - Cada coluna de competência deve virar uma row separada
+   - "Contingente" ou "Vidas" = vidas_ativas (número de beneficiários ativos)
+   - "Média" = coluna de média do período (última coluna do relatório)
 
 2. "custo_assistencial" - Relatório de Custo Assistencial por período
    - Extrair: período, custo total, custo per capita, quebras por tipo de atendimento
@@ -51,9 +53,20 @@ REGRAS DE NORMALIZAÇÃO:
 - Percentuais: "85,5%" ou "0,43%" → 85.5 ou 0.43 (número sem %)
 - Competências: "12/2024" → "2024-12" (formato YYYY-MM)
 - Datas: "01/12/2024" → "2024-12-01" (formato YYYY-MM-DD)
-- Se IU não vier explícito, calcular: (sinistros/faturamento)*100
 
-RETORNE SOMENTE JSON VÁLIDO no seguinte formato:
+REGRAS CRÍTICAS PARA IU (ÍNDICE DE UTILIZAÇÃO):
+- SEMPRE usar o IU INFORMADO no relatório (ex: "85,5%" na linha IU)
+- NÃO recalcular ou substituir o IU informado
+- Se o IU não vier explícito e precisar calcular, marcar iu_calculado separadamente
+
+MAPEAMENTO DE CAMPOS:
+- "Contingente" ou "Vidas" → vidas_ativas (número inteiro)
+- "Faturamento" ou "Receita" → faturamento
+- "Custo Assistencial" ou "Sinistros" → sinistros
+- "IU" ou "Índice de Utilização" → iu (usar EXATAMENTE o valor informado)
+- "Média" (última coluna) → media
+
+RETORNE SOMENTE JSON VÁLIDO (sem markdown, sem comentários, sem texto fora do JSON):
 {
   "document_type": "demonstrativo_resultado" | "custo_assistencial" | "consultas" | "internacoes" | "unknown",
   "meta": {
@@ -66,10 +79,11 @@ RETORNE SOMENTE JSON VÁLIDO no seguinte formato:
   "rows": [
     {
       "competencia": "YYYY-MM ou null",
-      "vidas": numero ou null,
+      "vidas_ativas": numero ou null,
       "faturamento": numero ou null,
       "sinistros": numero ou null,
       "iu": numero ou null,
+      "media": numero ou null,
       "observacoes": "string ou null",
       "page_ref": "p1"
     }
@@ -117,10 +131,11 @@ interface ExtractedData {
   };
   rows: Array<{
     competencia: string | null;
-    vidas: number | null;
+    vidas_ativas: number | null;
     faturamento: number | null;
     sinistros: number | null;
     iu: number | null;
+    media: number | null;
     observacoes: string | null;
     page_ref: string;
   }>;
@@ -409,16 +424,22 @@ function parseExtractedData(content: string, requestId?: string): ExtractedData 
     };
   }
   
-  // Extract rows
+  // Extract rows - map vidas to vidas_ativas for backward compatibility
   if (Array.isArray(parsed.rows)) {
     result.rows = parsed.rows.map((row: unknown) => {
       const r = (row && typeof row === 'object') ? row as Record<string, unknown> : {};
+      // Support both 'vidas_ativas' and legacy 'vidas' field names
+      const vidasAtivas = typeof r.vidas_ativas === 'number' ? r.vidas_ativas 
+        : typeof r.vidas === 'number' ? r.vidas 
+        : typeof r.contingente === 'number' ? r.contingente 
+        : null;
       return {
         competencia: typeof r.competencia === 'string' ? r.competencia : null,
-        vidas: typeof r.vidas === 'number' ? r.vidas : null,
+        vidas_ativas: vidasAtivas,
         faturamento: typeof r.faturamento === 'number' ? r.faturamento : null,
         sinistros: typeof r.sinistros === 'number' ? r.sinistros : null,
         iu: typeof r.iu === 'number' ? r.iu : null,
+        media: typeof r.media === 'number' ? r.media : null,
         observacoes: typeof r.observacoes === 'string' ? r.observacoes : null,
         page_ref: typeof r.page_ref === 'string' ? r.page_ref : 'p1',
       };
@@ -686,10 +707,11 @@ serve(async (req) => {
           original_data: row,
           mapped_data: {
             competencia: row.competencia,
-            vidas: row.vidas,
+            vidas_ativas: row.vidas_ativas,
             faturamento: row.faturamento,
             sinistros: row.sinistros,
             iu: row.iu,
+            media: row.media,
             observacoes: row.observacoes,
             page_ref: row.page_ref,
             operadora: extractedData.meta.operadora,
@@ -794,6 +816,7 @@ serve(async (req) => {
 
         if (mappedData.competencia) {
           // Monthly data -> sinistralidade table
+          // Use IU informado directly (not recalculated)
           const { error: insertError } = await supabaseAdmin
             .from('sinistralidade')
             .upsert({
@@ -803,8 +826,10 @@ serve(async (req) => {
               valor_premio: mappedData.faturamento || 0,
               valor_sinistros: mappedData.sinistros || 0,
               quantidade_sinistros: 0,
-              indice_sinistralidade: mappedData.iu,
-              vidas: mappedData.vidas,
+              indice_sinistralidade: mappedData.iu, // IU informado from report
+              vidas: mappedData.vidas_ativas, // Map vidas_ativas to vidas column
+              vidas_ativas: mappedData.vidas_ativas, // New dedicated column
+              media: mappedData.media, // New media column
               operadora: mappedData.operadora as string,
               produto: mappedData.produto as string,
               fonte_pdf_path: job.arquivo_url,

@@ -854,6 +854,7 @@ export type Database = {
           id: string
           import_job_id: string | null
           indice_sinistralidade: number | null
+          media: number | null
           operadora: string | null
           produto: string | null
           quantidade_sinistros: number
@@ -866,6 +867,7 @@ export type Database = {
           valor_premio: number
           valor_sinistros: number
           vidas: number | null
+          vidas_ativas: number | null
         }
         Insert: {
           categoria: Database["public"]["Enums"]["categoria_beneficio"]
@@ -877,6 +879,7 @@ export type Database = {
           id?: string
           import_job_id?: string | null
           indice_sinistralidade?: number | null
+          media?: number | null
           operadora?: string | null
           produto?: string | null
           quantidade_sinistros?: number
@@ -889,6 +892,7 @@ export type Database = {
           valor_premio?: number
           valor_sinistros?: number
           vidas?: number | null
+          vidas_ativas?: number | null
         }
         Update: {
           categoria?: Database["public"]["Enums"]["categoria_beneficio"]
@@ -900,6 +904,7 @@ export type Database = {
           id?: string
           import_job_id?: string | null
           indice_sinistralidade?: number | null
+          media?: number | null
           operadora?: string | null
           produto?: string | null
           quantidade_sinistros?: number
@@ -912,6 +917,7 @@ export type Database = {
           valor_premio?: number
           valor_sinistros?: number
           vidas?: number | null
+          vidas_ativas?: number | null
         }
         Relationships: [
           {

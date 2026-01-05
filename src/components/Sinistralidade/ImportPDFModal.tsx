@@ -23,10 +23,11 @@ interface Empresa {
 
 interface ExtractedRow {
   competencia: string | null;
-  vidas: number | null;
+  vidas_ativas: number | null;
   faturamento: number | null;
   sinistros: number | null;
   iu: number | null;
+  media: number | null;
   observacoes: string | null;
   page_ref: string;
 }
@@ -126,10 +127,11 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
       if (!original) return true;
       return (
         row.competencia !== original.competencia ||
-        row.vidas !== original.vidas ||
+        row.vidas_ativas !== original.vidas_ativas ||
         row.faturamento !== original.faturamento ||
         row.sinistros !== original.sinistros ||
         row.iu !== original.iu ||
+        row.media !== original.media ||
         row.observacoes !== original.observacoes
       );
     });
@@ -415,10 +417,11 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
           .update({
             mapped_data: {
               competencia: row.competencia,
-              vidas: row.vidas,
+              vidas_ativas: row.vidas_ativas,
               faturamento: row.faturamento,
               sinistros: row.sinistros,
               iu: row.iu,
+              media: row.media,
               observacoes: row.observacoes,
               page_ref: row.page_ref,
               operadora: extractedData?.meta.operadora,
@@ -816,13 +819,13 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-20">Página</TableHead>
+                      <TableHead className="w-16">Página</TableHead>
                       <TableHead className="w-24">Competência</TableHead>
-                      <TableHead className="w-20">Vidas</TableHead>
+                      <TableHead className="w-24">Vidas Ativas</TableHead>
                       <TableHead>Faturamento</TableHead>
                       <TableHead>Sinistros</TableHead>
-                      <TableHead className="w-20">IU %</TableHead>
-                      <TableHead>Observações</TableHead>
+                      <TableHead className="w-24">IU (informado)</TableHead>
+                      <TableHead className="w-24">Média</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -842,44 +845,48 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
                         <TableCell>
                           <Input
                             type="number"
-                            value={row.vidas || ''}
-                            onChange={(e) => handleRowEdit(index, 'vidas', e.target.value ? parseInt(e.target.value) : null)}
+                            value={row.vidas_ativas ?? ''}
+                            onChange={(e) => handleRowEdit(index, 'vidas_ativas', e.target.value ? parseInt(e.target.value) : null)}
                             className="h-8 w-20"
+                            title="Contingente / Vidas Ativas"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             type="number"
-                            value={row.faturamento || ''}
+                            value={row.faturamento ?? ''}
                             onChange={(e) => handleRowEdit(index, 'faturamento', e.target.value ? parseFloat(e.target.value) : null)}
-                            className="h-8 w-32"
+                            className="h-8 w-28"
                             step="0.01"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             type="number"
-                            value={row.sinistros || ''}
+                            value={row.sinistros ?? ''}
                             onChange={(e) => handleRowEdit(index, 'sinistros', e.target.value ? parseFloat(e.target.value) : null)}
-                            className="h-8 w-32"
+                            className="h-8 w-28"
                             step="0.01"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             type="number"
-                            value={row.iu || ''}
+                            value={row.iu ?? ''}
                             onChange={(e) => handleRowEdit(index, 'iu', e.target.value ? parseFloat(e.target.value) : null)}
                             className="h-8 w-20"
                             step="0.01"
+                            title="IU Informado no relatório"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
-                            value={row.observacoes || ''}
-                            onChange={(e) => handleRowEdit(index, 'observacoes', e.target.value || null)}
-                            className="h-8"
-                            placeholder="..."
+                            type="number"
+                            value={row.media ?? ''}
+                            onChange={(e) => handleRowEdit(index, 'media', e.target.value ? parseFloat(e.target.value) : null)}
+                            className="h-8 w-20"
+                            step="0.01"
+                            title="Média do período"
                           />
                         </TableCell>
                       </TableRow>

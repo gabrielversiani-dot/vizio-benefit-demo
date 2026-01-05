@@ -66,6 +66,11 @@ MAPEAMENTO DE CAMPOS:
 - "IU" ou "Índice de Utilização" → iu (usar EXATAMENTE o valor informado)
 - "Média" (última coluna) → media
 
+IMPORTANTE - MÉDIA DO PERÍODO:
+- A coluna "Média" no relatório representa a MÉDIA DO PERÍODO (sinistralidade consolidada).
+- Este valor é MUITO IMPORTANTE e deve ser capturado em meta.media_periodo.
+- Mesmo que apareça apenas no topo/rodapé, extrair e preencher meta.media_periodo.
+
 RETORNE SOMENTE JSON VÁLIDO (sem markdown, sem comentários, sem texto fora do JSON):
 {
   "document_type": "demonstrativo_resultado" | "custo_assistencial" | "consultas" | "internacoes" | "unknown",
@@ -74,7 +79,8 @@ RETORNE SOMENTE JSON VÁLIDO (sem markdown, sem comentários, sem texto fora do 
     "empresa_nome": "nome se aparecer ou null",
     "produto": "nome do plano/produto se aparecer ou null",
     "periodo_inicio": "YYYY-MM-DD ou null",
-    "periodo_fim": "YYYY-MM-DD ou null"
+    "periodo_fim": "YYYY-MM-DD ou null",
+    "media_periodo": numero ou null (OBRIGATÓRIO - valor da coluna Média do relatório)
   },
   "rows": [
     {
@@ -128,6 +134,7 @@ interface ExtractedData {
     produto: string | null;
     periodo_inicio: string | null;
     periodo_fim: string | null;
+    media_periodo: number | null;
   };
   rows: Array<{
     competencia: string | null;
@@ -405,6 +412,7 @@ function parseExtractedData(content: string, requestId?: string): ExtractedData 
       produto: null,
       periodo_inicio: null,
       periodo_fim: null,
+      media_periodo: null,
     },
     rows: [],
     indicadores_periodo: { tipo: null, metricas: {}, quebras: {} },
@@ -421,6 +429,7 @@ function parseExtractedData(content: string, requestId?: string): ExtractedData 
       produto: typeof meta.produto === 'string' ? meta.produto : null,
       periodo_inicio: typeof meta.periodo_inicio === 'string' ? meta.periodo_inicio : null,
       periodo_fim: typeof meta.periodo_fim === 'string' ? meta.periodo_fim : null,
+      media_periodo: typeof meta.media_periodo === 'number' ? meta.media_periodo : null,
     };
   }
   
@@ -610,6 +619,7 @@ serve(async (req) => {
               produto: null,
               periodo_inicio: null,
               periodo_fim: null,
+              media_periodo: null,
             },
             rows: [],
             indicadores_periodo: { tipo: null, metricas: {}, quebras: {} },
@@ -848,22 +858,23 @@ serve(async (req) => {
         }
       }
 
-      // Insert period indicators if present
-      if (columnMapping.indicadores_periodo?.tipo) {
-        const indicadores = columnMapping.indicadores_periodo;
-        const meta = columnMapping.meta;
-
+      // Insert period indicators if present OR if we have media_periodo
+      const meta = columnMapping.meta;
+      const indicadores = columnMapping.indicadores_periodo;
+      
+      if (indicadores?.tipo || meta.media_periodo) {
         const { error: indicadorError } = await supabaseAdmin
           .from('sinistralidade_indicadores_periodo')
           .insert({
             empresa_id: job.empresa_id,
             periodo_inicio: meta.periodo_inicio || new Date().toISOString().split('T')[0],
             periodo_fim: meta.periodo_fim || new Date().toISOString().split('T')[0],
-            tipo_relatorio: indicadores.tipo,
+            tipo_relatorio: indicadores?.tipo || 'demonstrativo_resultado',
             operadora: meta.operadora,
             produto: meta.produto,
-            metricas: indicadores.metricas,
-            quebras: indicadores.quebras,
+            metricas: indicadores?.metricas || {},
+            quebras: indicadores?.quebras || {},
+            media_periodo: meta.media_periodo, // New field - sinistralidade média do período
             fonte_pdf_path: job.arquivo_url,
             import_job_id: job.id,
             criado_por: user.id

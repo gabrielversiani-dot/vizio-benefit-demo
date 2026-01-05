@@ -16,6 +16,7 @@ interface IndicadorPeriodo {
   produto: string | null;
   metricas: Record<string, unknown>;
   quebras: Record<string, unknown>;
+  media_periodo: number | null;
   created_at: string;
 }
 
@@ -107,7 +108,7 @@ export function IndicadoresPeriodoSection({ empresaId }: IndicadoresPeriodoSecti
           Indicadores por Período
         </CardTitle>
         <CardDescription>
-          Métricas detalhadas extraídas de relatórios de período
+          Métricas detalhadas extraídas de relatórios de período. A "Média do Período" é o IU consolidado.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -115,9 +116,9 @@ export function IndicadoresPeriodoSection({ empresaId }: IndicadoresPeriodoSecti
           {indicadores.map((indicador) => (
             <AccordionItem key={indicador.id} value={indicador.id}>
               <AccordionTrigger className="hover:no-underline">
-                <div className="flex items-center gap-3 text-left">
+                <div className="flex items-center gap-3 text-left flex-1">
                   {getTipoIcon(indicador.tipo_relatorio)}
-                  <div>
+                  <div className="flex-1">
                     <div className="font-medium flex items-center gap-2">
                       {getTipoLabel(indicador.tipo_relatorio)}
                       {indicador.operadora && (
@@ -129,6 +130,13 @@ export function IndicadoresPeriodoSection({ empresaId }: IndicadoresPeriodoSecti
                       {format(new Date(indicador.periodo_inicio), "dd/MM/yyyy", { locale: ptBR })} - {format(new Date(indicador.periodo_fim), "dd/MM/yyyy", { locale: ptBR })}
                     </div>
                   </div>
+                  {/* Media do Período como KPI principal */}
+                  {indicador.media_periodo !== null && (
+                    <div className="text-right mr-4">
+                      <p className="text-xs text-muted-foreground">Média do Período</p>
+                      <p className="text-lg font-bold text-primary">{indicador.media_periodo.toFixed(2)}%</p>
+                    </div>
+                  )}
                 </div>
               </AccordionTrigger>
               <AccordionContent>

@@ -8,9 +8,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Use Lovable AI (no external API key needed) - falls back to OpenAI if configured
+const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+// Lovable AI endpoint
+const LOVABLE_AI_URL = 'https://api.lovable.dev/v1/chat/completions';
 
 // System prompt for PDF extraction
 const EXTRACTION_SYSTEM_PROMPT = `Você é um especialista em extração de dados de relatórios de sinistralidade de operadoras de saúde, especificamente Unimed Belo Horizonte.
@@ -125,15 +130,15 @@ interface ExtractedData {
   };
 }
 
-async function callOpenAIVision(pages: PageImage[]): Promise<{ content: string; tokensUsed: number }> {
-  if (!OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY não configurada');
+async function callLovableAIVision(pages: PageImage[]): Promise<{ content: string; tokensUsed: number }> {
+  if (!LOVABLE_API_KEY) {
+    throw new Error('LOVABLE_API_KEY não configurada');
   }
 
-  console.log(`Calling OpenAI Vision API with ${pages.length} pages...`);
+  console.log(`Calling Lovable AI Vision with ${pages.length} pages...`);
 
   // Build content array with images
-  const contentArray: Array<{ type: string; text?: string; image_url?: { url: string; detail: string } }> = [
+  const contentArray: Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }> = [
     {
       type: 'text',
       text: `Analise as ${pages.length} página(s) do relatório Unimed BH e extraia os dados estruturados conforme o schema especificado. Retorne SOMENTE o JSON, sem markdown.`
@@ -148,19 +153,18 @@ async function callOpenAIVision(pages: PageImage[]): Promise<{ content: string; 
         url: page.imageBase64.startsWith('data:') 
           ? page.imageBase64 
           : `data:image/png;base64,${page.imageBase64}`,
-        detail: 'high'
       }
     });
   }
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch(LOVABLE_AI_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Authorization': `Bearer ${LOVABLE_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model: 'google/gemini-2.5-pro',
       messages: [
         { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
         { role: 'user', content: contentArray }
@@ -172,12 +176,12 @@ async function callOpenAIVision(pages: PageImage[]): Promise<{ content: string; 
 
   if (!response.ok) {
     const error = await response.text();
-    console.error('OpenAI Vision API error:', response.status, error);
-    throw new Error(`OpenAI API error: ${response.status} - ${error}`);
+    console.error('Lovable AI Vision error:', response.status, error);
+    throw new Error(`Lovable AI error: ${response.status} - ${error}`);
   }
 
   const data = await response.json();
-  console.log('OpenAI Vision response received, tokens:', data.usage?.total_tokens);
+  console.log('Lovable AI Vision response received, tokens:', data.usage?.total_tokens);
 
   return {
     content: data.choices[0].message.content,
@@ -213,21 +217,21 @@ async function extractTextFromPdf(pdfBytes: Uint8Array): Promise<string> {
   return fullText.trim();
 }
 
-async function callOpenAIText(text: string): Promise<{ content: string; tokensUsed: number }> {
-  if (!OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY não configurada');
+async function callLovableAIText(text: string): Promise<{ content: string; tokensUsed: number }> {
+  if (!LOVABLE_API_KEY) {
+    throw new Error('LOVABLE_API_KEY não configurada');
   }
 
   const clipped = text.length > 30000 ? text.slice(0, 30000) : text;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch(LOVABLE_AI_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Authorization': `Bearer ${LOVABLE_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model: 'google/gemini-2.5-flash',
       messages: [
         { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
         {
@@ -242,8 +246,8 @@ async function callOpenAIText(text: string): Promise<{ content: string; tokensUs
 
   if (!response.ok) {
     const error = await response.text();
-    console.error('OpenAI Text API error:', response.status, error);
-    throw new Error(`OpenAI API error: ${response.status} - ${error}`);
+    console.error('Lovable AI Text error:', response.status, error);
+    throw new Error(`Lovable AI error: ${response.status} - ${error}`);
   }
 
   const data = await response.json();
@@ -416,7 +420,7 @@ serve(async (req) => {
             summary: { rows: 0, errors: 1, warnings: 0 },
           };
         } else {
-          const { content, tokensUsed: t } = await callOpenAIText(extractedText);
+          const { content, tokensUsed: t } = await callLovableAIText(extractedText);
           tokensUsed = t;
           extractedData = parseExtractedData(content);
         }
@@ -428,8 +432,8 @@ serve(async (req) => {
           });
         }
 
-        // Call OpenAI Vision
-        const { content, tokensUsed: t } = await callOpenAIVision(pages);
+        // Call Lovable AI Vision
+        const { content, tokensUsed: t } = await callLovableAIVision(pages);
         tokensUsed = t;
 
         // Parse extracted data

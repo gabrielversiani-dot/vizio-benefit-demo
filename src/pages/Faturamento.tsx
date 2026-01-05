@@ -56,6 +56,18 @@ const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 };
 
+// Calculate effective status (auto-detect overdue)
+const getEffectiveStatus = (fatura: FaturamentoRow): FaturamentoRow["status"] => {
+  if (fatura.status === "pago" || fatura.status === "cancelado") {
+    return fatura.status;
+  }
+  const today = new Date().toISOString().split('T')[0];
+  if (fatura.vencimento < today) {
+    return "atraso";
+  }
+  return fatura.status;
+};
+
 export default function Faturamento() {
   const { empresaSelecionada, isAdminVizio } = useEmpresa();
   const queryClient = useQueryClient();
@@ -127,34 +139,44 @@ export default function Faturamento() {
     },
   });
 
-  // Auto-update status for overdue invoices
-  const updateOverdueMutation = useMutation({
-    mutationFn: async (overdueIds: string[]) => {
+  // Apply effective status to data (for display and filtering)
+  const faturamentosWithEffectiveStatus = useMemo(() => {
+    return faturamentos.map(f => ({
+      ...f,
+      status: getEffectiveStatus(f),
+      _originalStatus: f.status, // Keep original for reference
+    }));
+  }, [faturamentos]);
+
+  // Mark as paid mutation
+  const markAsPaidMutation = useMutation({
+    mutationFn: async (faturaId: string) => {
+      const today = new Date().toISOString().split('T')[0];
       const { error } = await supabase
         .from("faturamentos")
-        .update({ status: "atraso" })
-        .in("id", overdueIds);
+        .update({ 
+          status: "pago",
+          pago_em: today
+        })
+        .eq("id", faturaId);
       if (error) throw error;
     },
     onSuccess: () => {
+      toast.success("Fatura marcada como paga!");
       queryClient.invalidateQueries({ queryKey: ["faturamentos"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao marcar como pago");
     },
   });
 
-  // Check and update overdue invoices
-  useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const overdueInvoices = faturamentos.filter(
-      f => f.status === "aguardando_pagamento" && f.vencimento < today
-    );
-    if (overdueInvoices.length > 0) {
-      updateOverdueMutation.mutate(overdueInvoices.map(f => f.id));
-    }
-  }, [faturamentos]);
+  const handleMarkAsPaid = (fatura: FaturamentoRow) => {
+    markAsPaidMutation.mutate(fatura.id);
+  };
 
-  // Filter data
+  // Filter data (now using effective status)
   const filteredData = useMemo(() => {
-    let data = faturamentos;
+    let data = faturamentosWithEffectiveStatus;
     if (empresaFilter !== "todas" && isAdminVizio) {
       data = data.filter(f => f.empresa_id === empresaFilter);
     }
@@ -165,9 +187,9 @@ export default function Faturamento() {
       data = data.filter(f => f.status === statusFilter);
     }
     return data;
-  }, [faturamentos, empresaFilter, produtoFilter, statusFilter, isAdminVizio]);
+  }, [faturamentosWithEffectiveStatus, empresaFilter, produtoFilter, statusFilter, isAdminVizio]);
 
-  // KPIs
+  // KPIs (using effective status)
   const kpis = useMemo(() => {
     const totalPeriodo = filteredData.reduce((acc, f) => acc + Number(f.valor_total), 0);
     const totalAberto = filteredData
@@ -228,7 +250,7 @@ export default function Faturamento() {
     );
   }
 
-  // Empty state
+  // Empty state (using original count)
   if (faturamentos.length === 0) {
     return (
       <AppLayout>
@@ -484,6 +506,18 @@ export default function Faturamento() {
                             </Button>
                             {canManage && (
                               <>
+                                {fatura.status !== "pago" && fatura.status !== "cancelado" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleMarkAsPaid(fatura)}
+                                    title="Marcar como pago"
+                                    disabled={markAsPaidMutation.isPending}
+                                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  >
+                                    <CheckCircle className="h-4 w-4" />
+                                  </Button>
+                                )}
                                 <Button
                                   variant="ghost"
                                   size="icon"

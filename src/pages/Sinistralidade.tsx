@@ -517,10 +517,22 @@ export default function Sinistralidade() {
                   <XAxis dataKey="mes" />
                   <YAxis yAxisId="left" tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`} />
                   <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `${v}%`} />
-                  <Tooltip 
-                    formatter={(value: number, name: string) => {
-                      if (name === "indice") return [`${value.toFixed(1)}%`, "Índice"];
-                      return [formatCurrency(value), name === "premio" ? "Prêmio" : "Sinistros"];
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload || payload.length === 0) return null;
+                      const premio = payload.find((p) => p.dataKey === "premio")?.value as number | undefined;
+                      const sinistros = payload.find((p) => p.dataKey === "sinistros")?.value as number | undefined;
+                      const iu = premio && premio > 0 ? ((sinistros ?? 0) / premio) * 100 : null;
+                      return (
+                        <div className="rounded-lg border bg-background p-3 shadow-sm text-sm">
+                          <p className="font-medium mb-2">{label}</p>
+                          <div className="space-y-1">
+                            <p>Prêmio: <span className="font-medium">{formatCurrency(premio ?? 0)}</span></p>
+                            <p>Sinistros: <span className="font-medium">{formatCurrency(sinistros ?? 0)}</span></p>
+                            <p>Sinistralidade (IU): <span className="font-medium">{iu != null ? `${iu.toFixed(2).replace(".", ",")}%` : "—"}</span></p>
+                          </div>
+                        </div>
+                      );
                     }}
                   />
                   <Legend />

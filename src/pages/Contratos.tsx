@@ -77,7 +77,7 @@ import { ContratoDetailModal } from "@/components/Contratos/ContratoDetailModal"
 
 type TipoDocumento = 'contrato' | 'aditivo' | 'renovacao';
 type StatusContrato = 'ativo' | 'vencido' | 'em_renovacao' | 'suspenso' | 'cancelado';
-type Produto = 'saude' | 'odonto' | 'vida_em_grupo';
+type Produto = 'saude' | 'odonto' | 'vida';
 
 interface Contrato {
   id: string;
@@ -124,7 +124,7 @@ const tipoConfig = {
 const produtoConfig = {
   saude: { label: "Saúde", icon: Heart, color: "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300" },
   odonto: { label: "Odonto", icon: Stethoscope, color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300" },
-  vida_em_grupo: { label: "Vida em Grupo", icon: Shield, color: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300" },
+  vida: { label: "Vida em Grupo", icon: Shield, color: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300" },
 };
 
 export default function Contratos() {
@@ -358,7 +358,7 @@ export default function Contratos() {
                     <SelectItem value="todos">Todos</SelectItem>
                     <SelectItem value="saude">Saúde</SelectItem>
                     <SelectItem value="odonto">Odonto</SelectItem>
-                    <SelectItem value="vida_em_grupo">Vida em Grupo</SelectItem>
+                    <SelectItem value="vida">Vida em Grupo</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

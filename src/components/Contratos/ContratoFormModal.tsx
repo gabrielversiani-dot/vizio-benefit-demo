@@ -16,7 +16,7 @@ import { toast } from "sonner";
 
 type TipoDocumento = 'contrato' | 'aditivo' | 'renovacao';
 type StatusContrato = 'ativo' | 'vencido' | 'em_renovacao' | 'suspenso' | 'cancelado';
-type Produto = 'saude' | 'odonto' | 'vida_em_grupo';
+type Produto = 'saude' | 'odonto' | 'vida';
 type TipoDocumentoArquivo = 'contrato_principal' | 'anexo' | 'aditivo' | 'reajuste' | 'outros';
 
 interface Contrato {
@@ -463,7 +463,7 @@ export function ContratoFormModal({ open, onOpenChange, contrato, onSuccess }: P
                   <SelectContent>
                     <SelectItem value="saude">Saúde</SelectItem>
                     <SelectItem value="odonto">Odonto</SelectItem>
-                    <SelectItem value="vida_em_grupo">Vida em Grupo</SelectItem>
+                    <SelectItem value="vida">Vida em Grupo</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

@@ -87,7 +87,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
 const produtoConfig: Record<string, { label: string; icon: any; color: string }> = {
   saude: { label: "Saúde", icon: Heart, color: "bg-pink-100 text-pink-800" },
   odonto: { label: "Odonto", icon: Stethoscope, color: "bg-cyan-100 text-cyan-800" },
-  vida_em_grupo: { label: "Vida em Grupo", icon: Shield, color: "bg-purple-100 text-purple-800" },
+  vida: { label: "Vida em Grupo", icon: Shield, color: "bg-purple-100 text-purple-800" },
 };
 
 const tipoDocConfig: Record<string, string> = {

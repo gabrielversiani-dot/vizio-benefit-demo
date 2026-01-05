@@ -1,6 +1,7 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -11,7 +12,6 @@ import {
 import { LogOut, Building2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useEmpresa } from "@/contexts/EmpresaContext";
-
 interface AppLayoutProps {
   children: React.ReactNode;
 }
@@ -53,7 +53,14 @@ export function AppLayout({ children }: AppLayoutProps) {
                       <SelectContent className="bg-popover z-50">
                         {empresas.map((empresa) => (
                           <SelectItem key={empresa.id} value={empresa.id}>
-                            {empresa.nome}
+                            <span className="flex items-center gap-2">
+                              {empresa.nome}
+                              {empresa.is_demo && (
+                                <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700">
+                                  Demo
+                                </Badge>
+                              )}
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>

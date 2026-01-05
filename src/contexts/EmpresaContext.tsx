@@ -6,6 +6,7 @@ interface Empresa {
   id: string;
   nome: string;
   cnpj: string;
+  is_demo: boolean;
 }
 
 interface EmpresaContextType {
@@ -63,8 +64,9 @@ export function EmpresaProvider({ children }: { children: ReactNode }) {
         // Buscar lista de empresas (para Admin Vizio ou para pegar nome da empresa)
         const { data: empresasData } = await supabase
           .from('empresas')
-          .select('id, nome, cnpj')
+          .select('id, nome, cnpj, is_demo')
           .eq('ativo', true)
+          .order('is_demo')
           .order('nome');
 
         setEmpresas(empresasData || []);

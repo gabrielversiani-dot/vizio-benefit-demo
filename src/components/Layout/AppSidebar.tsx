@@ -1,4 +1,4 @@
-import { LayoutDashboard, DollarSign, Activity, Users, FileText, Settings, Shield, FileSignature, RefreshCw, ClipboardList, Heart, Bot } from "lucide-react";
+import { LayoutDashboard, DollarSign, Activity, Users, FileText, Settings, Shield, FileSignature, RefreshCw, ClipboardList, Heart, Bot, FlaskConical } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -9,6 +9,7 @@ import {
   SidebarMenuButton,
   SidebarFooter,
 } from "@/components/ui/sidebar";
+import { useEmpresa } from "@/contexts/EmpresaContext";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
@@ -24,7 +25,13 @@ const menuItems = [
   { icon: FileText, label: "Relatórios", href: "/relatorios" },
 ];
 
+const adminItems = [
+  { icon: FlaskConical, label: "Central de Testes", href: "/admin/testes" },
+];
+
 export function AppSidebar() {
+  const { isAdminVizio } = useEmpresa();
+
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-6 py-5">
@@ -42,6 +49,23 @@ export function AppSidebar() {
       <SidebarContent className="px-3 py-4">
         <SidebarMenu>
           {menuItems.map((item) => (
+            <SidebarMenuItem key={item.href}>
+              <NavLink to={item.href}>
+                {({ isActive }) => (
+                  <SidebarMenuButton
+                    isActive={isActive}
+                    className="w-full justify-start gap-3 px-3 py-2.5"
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                )}
+              </NavLink>
+            </SidebarMenuItem>
+          ))}
+          
+          {/* Admin-only items */}
+          {isAdminVizio && adminItems.map((item) => (
             <SidebarMenuItem key={item.href}>
               <NavLink to={item.href}>
                 {({ isActive }) => (

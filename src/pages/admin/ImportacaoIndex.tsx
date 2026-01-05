@@ -8,7 +8,47 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Upload, FileText, Bot, Loader2, History, AlertCircle, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Upload, FileText, Bot, Loader2, History, AlertCircle, CheckCircle, XCircle, Clock, Download } from "lucide-react";
+
+// CSV Templates
+const TEMPLATES = {
+  beneficiarios: {
+    headers: "nome_completo;cpf;data_nascimento;sexo;tipo;titular_cpf;grau_parentesco;email;telefone;matricula;cargo;departamento;plano_saude;plano_odonto;plano_vida;status;data_inclusao;observacoes",
+    example: `nome_completo;cpf;data_nascimento;sexo;tipo;titular_cpf;grau_parentesco;email;telefone;matricula;cargo;departamento;plano_saude;plano_odonto;plano_vida;status;data_inclusao;observacoes
+João da Silva;123.456.789-09;1985-03-15;M;titular;;Cônjuge;joao.silva@email.com;11999998888;001;Gerente;TI;true;true;true;ativo;2024-01-01;Funcionário antigo
+Maria da Silva;987.654.321-00;1988-07-20;F;dependente;123.456.789-09;Cônjuge;maria.silva@email.com;11999997777;;;false;true;false;ativo;2024-01-01;Esposa do João
+Pedro da Silva;111.222.333-44;2010-11-10;M;dependente;123.456.789-09;Filho;;;;;;;true;true;true;ativo;2024-01-01;Filho do João
+Ana Santos;444.555.666-77;1990-05-25;F;titular;;Cônjuge;ana.santos@email.com;11988887777;002;Analista;RH;true;true;true;ativo;2024-02-15;
+Lucas Santos;555.666.777-88;2015-08-12;M;dependente;444.555.666-77;Filho;;;;;;;true;false;false;ativo;2024-02-15;Filho da Ana
+Julia Santos;666.777.888-99;2018-03-01;F;dependente;444.555.666-77;Filho;;;;;;;true;false;false;ativo;2024-02-15;Filha da Ana`,
+  },
+  movimentacoes: {
+    headers: "tipo;categoria;nome_completo;cpf;data_nascimento;data_movimentacao;motivo;observacoes",
+    example: "",
+  },
+  faturamento: {
+    headers: "competencia;categoria;valor_mensalidade;valor_coparticipacao;valor_reembolsos;valor_total;total_vidas;total_titulares;total_dependentes;data_vencimento;status",
+    example: "",
+  },
+  sinistros: {
+    headers: "competencia;categoria;valor_premio;valor_sinistros;quantidade_sinistros;sinistros_consultas;sinistros_exames;sinistros_internacoes;sinistros_procedimentos;sinistros_outros",
+    example: "",
+  },
+};
+
+const downloadCSV = (content: string, filename: string) => {
+  // Add BOM for Excel to recognize UTF-8
+  const BOM = "\uFEFF";
+  const blob = new Blob([BOM + content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
@@ -239,6 +279,83 @@ const ImportacaoIndex = () => {
                 </>
               )}
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Templates Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Download className="h-5 w-5" />
+              Templates CSV
+            </CardTitle>
+            <CardDescription>
+              Baixe os templates padronizados para importação de dados
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <h4 className="font-medium text-sm">Beneficiários</h4>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => downloadCSV(TEMPLATES.beneficiarios.headers, "template_beneficiarios.csv")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Template Vazio
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => downloadCSV(TEMPLATES.beneficiarios.example, "exemplo_beneficiarios.csv")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exemplo Preenchido
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <h4 className="font-medium text-sm">Movimentações</h4>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => downloadCSV(TEMPLATES.movimentacoes.headers, "template_movimentacoes.csv")}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Template
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <h4 className="font-medium text-sm">Faturamento</h4>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => downloadCSV(TEMPLATES.faturamento.headers, "template_faturamento.csv")}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Template
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <h4 className="font-medium text-sm">Sinistralidade</h4>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => downloadCSV(TEMPLATES.sinistros.headers, "template_sinistros.csv")}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Template
+                </Button>
+              </div>
+            </div>
+            <div className="mt-4 p-3 bg-muted rounded-lg text-sm text-muted-foreground">
+              <p><strong>Formato:</strong> CSV separado por ponto-e-vírgula (;) ou vírgula (,)</p>
+              <p><strong>Datas:</strong> Formato YYYY-MM-DD (ex: 2024-01-15)</p>
+              <p><strong>Booleanos:</strong> true/false ou sim/não</p>
+              <p><strong>Dependentes:</strong> Preencha titular_cpf com o CPF do titular</p>
+            </div>
           </CardContent>
         </Card>
 

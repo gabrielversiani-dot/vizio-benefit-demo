@@ -15,7 +15,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const SCHEMAS = {
   beneficiarios: {
     required: ['nome_completo', 'cpf', 'data_nascimento'],
-    optional: ['email', 'telefone', 'sexo', 'cep', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'uf', 'matricula', 'cargo', 'departamento', 'tipo', 'grau_parentesco', 'plano_saude', 'plano_vida', 'plano_odonto', 'status', 'data_inclusao'],
+    optional: ['email', 'telefone', 'sexo', 'cep', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'uf', 'matricula', 'cargo', 'departamento', 'tipo', 'titular_cpf', 'grau_parentesco', 'plano_saude', 'plano_vida', 'plano_odonto', 'status', 'data_inclusao', 'observacoes'],
     cpfField: 'cpf',
   },
   faturamento: {
@@ -94,6 +94,12 @@ const COLUMN_MAPPINGS: Record<string, Record<string, string>> = {
     'data_inclusao': 'data_inclusao',
     'data_admissao': 'data_inclusao',
     'admissao': 'data_inclusao',
+    'titular_cpf': 'titular_cpf',
+    'cpf_titular': 'titular_cpf',
+    'titular': 'titular_cpf',
+    'observacoes': 'observacoes',
+    'observações': 'observacoes',
+    'obs': 'observacoes',
   },
   faturamento: {
     'competencia': 'competencia',
@@ -282,11 +288,20 @@ interface ValidationResult {
   mappedData: Record<string, unknown>;
 }
 
+interface TitularInfo {
+  cpf: string;
+  rowIndex: number;
+  existsInDb?: boolean;
+  dbId?: string;
+}
+
 function validateRow(
   row: Record<string, string>,
   columnMapping: Record<string, string>,
   dataType: string,
-  existingCPFs: Set<string>
+  existingCPFs: Set<string>,
+  titularesMap?: Map<string, TitularInfo>,
+  rowIndex?: number
 ): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -338,6 +353,38 @@ function validateRow(
       mappedData.tipo = tipo.includes('dep') ? 'dependente' : 'titular';
     } else {
       mappedData.tipo = 'titular';
+    }
+    
+    // Validate dependente has titular_cpf
+    if (mappedData.tipo === 'dependente') {
+      if (!mappedData.titular_cpf) {
+        errors.push(`Linha ${(rowIndex || 0) + 1}: Dependente sem titular_cpf`);
+      } else {
+        const titularCpf = normalizeCPF(mappedData.titular_cpf as string);
+        mappedData.titular_cpf = titularCpf;
+        
+        // Check if titular exists in file or database
+        if (titularesMap) {
+          const titular = titularesMap.get(titularCpf);
+          if (titular) {
+            if (titular.dbId) {
+              mappedData.titular_id = titular.dbId;
+            } else if (titular.rowIndex > (rowIndex || 0)) {
+              warnings.push(`Linha ${(rowIndex || 0) + 1}: Titular (CPF ${titularCpf}) aparece depois no arquivo`);
+            }
+          } else {
+            errors.push(`Linha ${(rowIndex || 0) + 1}: Titular com CPF ${titularCpf} não encontrado no arquivo nem no banco`);
+          }
+        }
+      }
+    }
+    
+    // Normalize data_inclusao
+    if (mappedData.data_inclusao) {
+      const normalized = normalizeDate(mappedData.data_inclusao as string);
+      if (normalized) {
+        mappedData.data_inclusao = normalized;
+      }
     }
     
     if (!mappedData.status) {
@@ -536,12 +583,56 @@ serve(async (req) => {
       const columnMapping = customMapping || mapColumns(headers, detectedDataType);
       
       let existingCPFs = new Set<string>();
+      const existingTitularesDb = new Map<string, string>(); // cpf -> id
+      
       if (detectedDataType === 'beneficiarios') {
         const { data: existingBeneficiarios } = await supabaseAdmin
           .from('beneficiarios')
-          .select('cpf')
+          .select('id, cpf, tipo')
           .eq('empresa_id', empresaId);
-        existingCPFs = new Set(existingBeneficiarios?.map(b => normalizeCPF(b.cpf)) || []);
+        
+        existingBeneficiarios?.forEach(b => {
+          const cpf = normalizeCPF(b.cpf);
+          existingCPFs.add(cpf);
+          if (b.tipo === 'titular') {
+            existingTitularesDb.set(cpf, b.id);
+          }
+        });
+      }
+
+      // Build titulares map from file + database for dependente validation
+      const titularesMap = new Map<string, TitularInfo>();
+      
+      // First pass: identify all titulares in file
+      if (detectedDataType === 'beneficiarios') {
+        parsedRows.forEach((row, index) => {
+          const mappedData: Record<string, unknown> = {};
+          Object.entries(row).forEach(([originalCol, value]) => {
+            const mappedCol = columnMapping[originalCol];
+            if (mappedCol && value) {
+              mappedData[mappedCol] = value;
+            }
+          });
+          
+          const tipo = mappedData.tipo ? (mappedData.tipo as string).toLowerCase() : 'titular';
+          const isTitular = !tipo.includes('dep');
+          
+          if (isTitular && mappedData.cpf) {
+            const cpf = normalizeCPF(mappedData.cpf as string);
+            titularesMap.set(cpf, { cpf, rowIndex: index });
+          }
+        });
+        
+        // Add titulares from database
+        existingTitularesDb.forEach((id, cpf) => {
+          if (!titularesMap.has(cpf)) {
+            titularesMap.set(cpf, { cpf, rowIndex: -1, existsInDb: true, dbId: id });
+          } else {
+            const existing = titularesMap.get(cpf)!;
+            existing.existsInDb = true;
+            existing.dbId = id;
+          }
+        });
       }
 
       const stagingRows: Array<{
@@ -560,7 +651,7 @@ serve(async (req) => {
       const seenCPFs = new Set<string>();
 
       parsedRows.forEach((row, index) => {
-        const result = validateRow(row, columnMapping, detectedDataType, existingCPFs);
+        const result = validateRow(row, columnMapping, detectedDataType, existingCPFs, titularesMap, index);
         
         if (detectedDataType === 'beneficiarios' && result.mappedData.cpf) {
           const cpf = result.mappedData.cpf as string;

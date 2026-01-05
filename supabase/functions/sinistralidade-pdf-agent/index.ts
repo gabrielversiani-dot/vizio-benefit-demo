@@ -320,15 +320,12 @@ serve(async (req) => {
       });
     }
 
-    // Create Supabase clients
-    const supabaseUser = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
+    // Create Supabase admin client (has access to auth.getUser with JWT token)
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Verify user authentication
-    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
+    // Extract JWT token and verify user
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
     if (userError || !user) {
       console.error('User auth error:', userError);
       return new Response(JSON.stringify({ error: 'Usuário não autenticado' }), {

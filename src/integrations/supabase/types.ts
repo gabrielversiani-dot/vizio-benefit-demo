@@ -850,8 +850,12 @@ export type Database = {
           created_at: string
           criado_por: string
           empresa_id: string
+          fonte_pdf_path: string | null
           id: string
+          import_job_id: string | null
           indice_sinistralidade: number | null
+          operadora: string | null
+          produto: string | null
           quantidade_sinistros: number
           sinistros_consultas: number | null
           sinistros_exames: number | null
@@ -861,6 +865,7 @@ export type Database = {
           updated_at: string
           valor_premio: number
           valor_sinistros: number
+          vidas: number | null
         }
         Insert: {
           categoria: Database["public"]["Enums"]["categoria_beneficio"]
@@ -868,8 +873,12 @@ export type Database = {
           created_at?: string
           criado_por: string
           empresa_id: string
+          fonte_pdf_path?: string | null
           id?: string
+          import_job_id?: string | null
           indice_sinistralidade?: number | null
+          operadora?: string | null
+          produto?: string | null
           quantidade_sinistros?: number
           sinistros_consultas?: number | null
           sinistros_exames?: number | null
@@ -879,6 +888,7 @@ export type Database = {
           updated_at?: string
           valor_premio?: number
           valor_sinistros?: number
+          vidas?: number | null
         }
         Update: {
           categoria?: Database["public"]["Enums"]["categoria_beneficio"]
@@ -886,8 +896,12 @@ export type Database = {
           created_at?: string
           criado_por?: string
           empresa_id?: string
+          fonte_pdf_path?: string | null
           id?: string
+          import_job_id?: string | null
           indice_sinistralidade?: number | null
+          operadora?: string | null
+          produto?: string | null
           quantidade_sinistros?: number
           sinistros_consultas?: number | null
           sinistros_exames?: number | null
@@ -897,6 +911,7 @@ export type Database = {
           updated_at?: string
           valor_premio?: number
           valor_sinistros?: number
+          vidas?: number | null
         }
         Relationships: [
           {
@@ -904,6 +919,79 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sinistralidade_import_job_id_fkey"
+            columns: ["import_job_id"]
+            isOneToOne: false
+            referencedRelation: "import_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sinistralidade_indicadores_periodo: {
+        Row: {
+          created_at: string
+          criado_por: string
+          empresa_id: string
+          fonte_pdf_path: string | null
+          id: string
+          import_job_id: string | null
+          metricas: Json | null
+          operadora: string | null
+          periodo_fim: string
+          periodo_inicio: string
+          produto: string | null
+          quebras: Json | null
+          tipo_relatorio: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          criado_por: string
+          empresa_id: string
+          fonte_pdf_path?: string | null
+          id?: string
+          import_job_id?: string | null
+          metricas?: Json | null
+          operadora?: string | null
+          periodo_fim: string
+          periodo_inicio: string
+          produto?: string | null
+          quebras?: Json | null
+          tipo_relatorio: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          criado_por?: string
+          empresa_id?: string
+          fonte_pdf_path?: string | null
+          id?: string
+          import_job_id?: string | null
+          metricas?: Json | null
+          operadora?: string | null
+          periodo_fim?: string
+          periodo_inicio?: string
+          produto?: string | null
+          quebras?: Json | null
+          tipo_relatorio?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sinistralidade_indicadores_periodo_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sinistralidade_indicadores_periodo_import_job_id_fkey"
+            columns: ["import_job_id"]
+            isOneToOne: false
+            referencedRelation: "import_jobs"
             referencedColumns: ["id"]
           },
         ]
@@ -1018,6 +1106,7 @@ export type Database = {
         | "sinistralidade"
         | "movimentacoes"
         | "contratos"
+        | "sinistralidade_pdf"
       import_job_status:
         | "pending"
         | "processing"
@@ -1209,6 +1298,7 @@ export const Constants = {
         "sinistralidade",
         "movimentacoes",
         "contratos",
+        "sinistralidade_pdf",
       ],
       import_job_status: [
         "pending",

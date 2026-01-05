@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.admin-apply-setup]
 verify_jwt = false
+
+[functions.sinistralidade-pdf-agent]
+verify_jwt = false

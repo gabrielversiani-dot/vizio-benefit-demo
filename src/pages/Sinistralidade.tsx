@@ -1,16 +1,18 @@
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Activity, TrendingDown, TrendingUp, AlertTriangle, FileText, Building2, Stethoscope, FlaskConical, BedDouble, Scissors } from "lucide-react";
+import { Activity, TrendingDown, TrendingUp, AlertTriangle, FileText, Building2, Stethoscope, FlaskConical, BedDouble, Scissors, Upload } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { ImportPDFModal } from "@/components/Sinistralidade/ImportPDFModal";
 
 type Sinistralidade = {
   id: string;
@@ -44,9 +46,11 @@ const formatPercent = (value: number) => {
 };
 
 export default function Sinistralidade() {
+  const queryClient = useQueryClient();
   const { empresaSelecionada } = useEmpresa();
   const [empresaFilter, setEmpresaFilter] = useState<string>("todas");
   const [periodoFilter, setPeriodoFilter] = useState<string>("12");
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   // Fetch empresas
   const { data: empresas = [] } = useQuery({
@@ -277,6 +281,10 @@ export default function Sinistralidade() {
             </p>
           </div>
           <div className="flex gap-3">
+            <Button onClick={() => setImportModalOpen(true)} variant="outline">
+              <Upload className="h-4 w-4 mr-2" />
+              Importar PDF (Unimed)
+            </Button>
             {!empresaSelecionada && (
               <Select value={empresaFilter} onValueChange={setEmpresaFilter}>
                 <SelectTrigger className="w-[200px]">
@@ -564,6 +572,12 @@ export default function Sinistralidade() {
           </CardContent>
         </Card>
       </div>
+
+      <ImportPDFModal
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+        onImportComplete={() => queryClient.invalidateQueries({ queryKey: ["sinistralidade"] })}
+      />
     </AppLayout>
   );
 }

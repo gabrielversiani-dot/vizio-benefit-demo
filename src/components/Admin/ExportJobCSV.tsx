@@ -14,6 +14,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+// Supabase Edge Function URL
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
 interface Props {
   jobId: string;
   dataType: string;
@@ -185,42 +189,66 @@ export function ExportJobCSV({ jobId, dataType, totalRows, statusFilter, searchQ
     setProgress("Gerando CSV no servidor...");
 
     try {
-      const { data, error } = await supabase.functions.invoke('export-import-job', {
-        body: { jobId, statusFilter, searchQuery },
+      // Get current session for auth token
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData?.session) {
+        throw new Error("Sessão não encontrada. Faça login novamente.");
+      }
+
+      const accessToken = sessionData.session.access_token;
+
+      // Use direct fetch to edge function (handles blob response properly)
+      const functionUrl = `${SUPABASE_URL}/functions/v1/export-import-job`;
+      
+      setProgress("Baixando arquivo...");
+
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'apikey': SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ jobId, statusFilter, searchQuery }),
       });
 
-      if (error) throw error;
-
-      // The function returns CSV content directly
-      if (typeof data === 'string') {
-        const timestamp = new Date().toISOString().slice(0, 10);
-        const filterSuffix = statusFilter !== 'all' ? `_${statusFilter}` : '';
-        const filename = `export_completo${filterSuffix}_${timestamp}.csv`;
-        downloadBlob(data, filename);
-
-        toast({
-          title: "Exportação concluída!",
-          description: "Arquivo baixado com sucesso.",
-        });
-      } else if (data?.error) {
-        throw new Error(data.error);
-      } else {
-        // Handle blob response
-        const blob = new Blob([data], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `export_${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-
-        toast({
-          title: "Exportação concluída!",
-          description: "Arquivo baixado com sucesso.",
-        });
+      if (!response.ok) {
+        // Try to parse error message from JSON response
+        const contentType = response.headers.get('content-type');
+        if (contentType?.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Erro ${response.status}`);
+        }
+        throw new Error(`Erro ${response.status}: ${response.statusText}`);
       }
+
+      // Get filename from Content-Disposition header if available
+      let filename = `export_completo_${new Date().toISOString().slice(0, 10)}.csv`;
+      const contentDisposition = response.headers.get('content-disposition');
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // Get response as blob (preserves BOM if server included it)
+      const blob = await response.blob();
+      
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Exportação concluída!",
+        description: `Arquivo "${filename}" baixado com sucesso.`,
+      });
 
     } catch (error) {
       console.error('Export complete error:', error);

@@ -108,11 +108,13 @@ export default function Sinistralidade() {
     queryFn: async () => {
       const mesesAtras = new Date();
       mesesAtras.setMonth(mesesAtras.getMonth() - parseInt(periodoFilter));
+      // Formato YYYY-MM para comparar com coluna competencia
+      const competenciaMinima = `${mesesAtras.getFullYear()}-${String(mesesAtras.getMonth() + 1).padStart(2, '0')}`;
       
       let query = supabase
         .from("sinistralidade")
         .select("*")
-        .gte("competencia", mesesAtras.toISOString().split('T')[0])
+        .gte("competencia", competenciaMinima)
         .order("competencia", { ascending: true });
       
       if (empresaSelecionada) {
@@ -131,11 +133,19 @@ export default function Sinistralidade() {
     queryFn: async () => {
       if (!resumo.periodo_inicio || !resumo.periodo_fim) return [];
       
+      // Converter para YYYY-MM (a coluna competencia está nesse formato)
+      const inicioYM = resumo.periodo_inicio.slice(0, 7); // "YYYY-MM"
+      const fimYM = resumo.periodo_fim.slice(0, 7); // "YYYY-MM"
+      
+      if (import.meta.env.DEV) {
+        console.log("[sinistralidade-pdf-query] inicioYM:", inicioYM, "fimYM:", fimYM);
+      }
+      
       let query = supabase
         .from("sinistralidade")
         .select("*")
-        .gte("competencia", resumo.periodo_inicio)
-        .lte("competencia", resumo.periodo_fim)
+        .gte("competencia", inicioYM)
+        .lte("competencia", fimYM)
         .order("competencia", { ascending: true });
       
       if (empresaSelecionada) {

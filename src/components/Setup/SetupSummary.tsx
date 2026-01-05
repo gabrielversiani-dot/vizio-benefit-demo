@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, ArrowLeft, Building2, Users, UserCog, Shield, PartyPopper } from "lucide-react";
+import { CheckCircle2, XCircle, ArrowLeft, Building2, Users, UserCog, Shield, PartyPopper, Home } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface StepStatus {
   empresas: { created: number; updated: number; errors: number };
@@ -16,9 +17,11 @@ interface SetupSummaryProps {
 }
 
 export function SetupSummary({ stepStatus, onBack }: SetupSummaryProps) {
+  const navigate = useNavigate();
   const totalCreated = stepStatus.empresas.created + stepStatus.usuarios.created + stepStatus.roles.created;
   const totalUpdated = stepStatus.empresas.updated + stepStatus.perfis.updated;
   const totalErrors = stepStatus.empresas.errors + stepStatus.usuarios.errors + stepStatus.perfis.errors + stepStatus.roles.errors;
+  const hasActivity = totalCreated > 0 || totalUpdated > 0;
 
   const summaryItems = [
     {
@@ -137,12 +140,35 @@ export function SetupSummary({ stepStatus, onBack }: SetupSummaryProps) {
         </CardContent>
       </Card>
 
-      <div className="flex justify-center">
+      <div className="flex justify-center gap-4">
         <Button variant="outline" onClick={onBack} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           Voltar ao Setup
         </Button>
+        {hasActivity && (
+          <Button onClick={() => navigate('/')} className="gap-2">
+            <Home className="h-4 w-4" />
+            Ir para Dashboard
+          </Button>
+        )}
       </div>
+
+      {/* Next Steps */}
+      {hasActivity && (
+        <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+          <CardHeader>
+            <CardTitle className="text-lg">Próximos Passos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="list-disc list-inside space-y-2 text-sm text-muted-foreground">
+              <li>Acesse o <strong>Dashboard</strong> para ver os dados consolidados</li>
+              <li>Gerencie <strong>Beneficiários</strong> das empresas cadastradas</li>
+              <li>Configure <strong>Contratos</strong> e documentos</li>
+              <li>Acompanhe <strong>Movimentações</strong> de vidas</li>
+            </ul>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

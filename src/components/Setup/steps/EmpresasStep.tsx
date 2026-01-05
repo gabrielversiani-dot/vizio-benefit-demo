@@ -369,7 +369,18 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
       } catch (err: any) {
         console.error('Error saving empresa:', err);
         errors++;
-        updatedRows[i] = { ...row, status: 'error', errors: { ...row.errors, _general: err.message } };
+        
+        // Handle permission errors gracefully
+        let errorMessage = err.message;
+        if (err.code === '42501' || err.message?.includes('row-level security')) {
+          errorMessage = 'Sem permissão para esta operação. Verifique suas permissões.';
+        } else if (err.code === 'PGRST301' || err.status === 401) {
+          errorMessage = 'Sessão expirada. Faça login novamente.';
+        } else if (err.status === 403) {
+          errorMessage = 'Acesso negado. Apenas admins podem executar esta operação.';
+        }
+        
+        updatedRows[i] = { ...row, status: 'error', errors: { ...row.errors, _general: errorMessage } };
       }
     }
 
@@ -385,6 +396,30 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
       setActiveUndo({ id: snapshotId, count: created + updated, expiresAt });
     }
 
+    // Post-apply verification
+    if (created + updated > 0) {
+      const savedCnpjs = updatedRows
+        .filter(r => r.status === 'success')
+        .map(r => normalizeCNPJ(r.data.cnpj));
+      
+      // Verify in database
+      const { data: verified, error: verifyError } = await supabase
+        .from('empresas')
+        .select('id, cnpj')
+        .in('cnpj', savedCnpjs);
+      
+      if (verifyError) {
+        console.warn('Post-apply verification failed:', verifyError);
+      } else {
+        const verifiedCnpjs = new Set(verified?.map(e => e.cnpj) || []);
+        const allVerified = savedCnpjs.every(cnpj => verifiedCnpjs.has(cnpj));
+        
+        if (!allVerified) {
+          toast.warning('Algumas empresas podem não ter sido salvas corretamente. Verifique os dados.');
+        }
+      }
+    }
+
     // Show detailed success message with IDs
     const savedIds = updatedRows
       .filter(r => r.status === 'success' && r.data._savedId)
@@ -392,7 +427,7 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
 
     if (errors === 0) {
       toast.success(`Empresas salvas com sucesso`, {
-        description: `${created} criada(s), ${updated} atualizada(s). IDs: ${savedIds.join(', ')}`,
+        description: `${created} criada(s), ${updated} atualizada(s). IDs: ${savedIds.slice(0, 3).join(', ')}${savedIds.length > 3 ? '...' : ''}`,
         duration: 5000,
       });
     } else {

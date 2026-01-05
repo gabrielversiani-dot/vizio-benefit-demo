@@ -13,6 +13,8 @@ import { ArrowLeft, Bot, CheckCircle, XCircle, AlertTriangle, Loader2, FileText,
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
+import { ImportJobChecklist } from "@/components/Admin/ImportJobChecklist";
+import { PostApprovalValidation } from "@/components/Admin/PostApprovalValidation";
 
 type ImportJob = {
   id: string;
@@ -297,6 +299,9 @@ const ImportacaoJobPreview = () => {
           </Card>
         </div>
 
+        {/* Job Checklist */}
+        <ImportJobChecklist job={job} rows={jobRows} />
+
         {/* AI Summary */}
         {job.ai_summary && (
           <Card>
@@ -502,15 +507,25 @@ const ImportacaoJobPreview = () => {
 
         {/* Completed/Rejected Message */}
         {job.status === "completed" && (
-          <Card className="border-green-200 dark:border-green-800">
-            <CardContent className="pt-6 text-center">
-              <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
-              <p className="text-lg font-medium text-green-600">Importação Concluída</p>
-              <p className="text-sm text-muted-foreground">
-                Aprovada em {job.data_aprovacao ? new Date(job.data_aprovacao).toLocaleString("pt-BR") : "-"}
-              </p>
-            </CardContent>
-          </Card>
+          <>
+            <Card className="border-green-200 dark:border-green-800">
+              <CardContent className="pt-6 text-center">
+                <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
+                <p className="text-lg font-medium text-green-600">Importação Concluída</p>
+                <p className="text-sm text-muted-foreground">
+                  Aprovada em {job.data_aprovacao ? new Date(job.data_aprovacao).toLocaleString("pt-BR") : "-"}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Post-Approval Validation */}
+            <PostApprovalValidation
+              jobId={job.id}
+              empresaId={job.empresa_id}
+              dataType={job.data_type}
+              rows={jobRows}
+            />
+          </>
         )}
 
         {job.status === "rejected" && (

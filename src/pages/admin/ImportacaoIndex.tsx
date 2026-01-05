@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Upload, FileText, Bot, Loader2, History, AlertCircle, CheckCircle, XCircle, Clock, Download } from "lucide-react";
+import { ImportTestGuide } from "@/components/Admin/ImportTestGuide";
 
 // CSV Templates
 const TEMPLATES = {
@@ -281,6 +282,9 @@ const ImportacaoIndex = () => {
             </Button>
           </CardContent>
         </Card>
+
+        {/* Test Guide */}
+        <ImportTestGuide />
 
         {/* Templates Section */}
         <Card>

@@ -446,6 +446,7 @@ export type Database = {
           contato_telefone: string | null
           created_at: string
           id: string
+          is_demo: boolean
           nome: string
           razao_social: string | null
           updated_at: string
@@ -457,6 +458,7 @@ export type Database = {
           contato_telefone?: string | null
           created_at?: string
           id?: string
+          is_demo?: boolean
           nome: string
           razao_social?: string | null
           updated_at?: string
@@ -468,6 +470,7 @@ export type Database = {
           contato_telefone?: string | null
           created_at?: string
           id?: string
+          is_demo?: boolean
           nome?: string
           razao_social?: string | null
           updated_at?: string

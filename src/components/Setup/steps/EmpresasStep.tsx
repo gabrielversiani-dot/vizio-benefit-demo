@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Loader2, Save, AlertTriangle, Info, Eye, FileCheck } from "lucide-react";
+import { CheckCircle2, Loader2, Save, AlertTriangle, Info, Eye, FileCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { EditableGrid, GridColumn, GridRow } from "../EditableGrid";
 import { PreviewApplyModal, PreviewItem } from "../PreviewApplyModal";
 import { UndoBanner } from "../UndoBanner";
+import { AIAssistantModal } from "../AIAssistantModal";
 import { useSetupDraft } from "@/hooks/useSetupDraft";
 import { useSetupUndo } from "@/hooks/useSetupUndo";
 
@@ -102,9 +103,59 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
   const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
   const [progress, setProgress] = useState(0);
   const [activeUndo, setActiveUndo] = useState<{ id: string; count: number; expiresAt: string } | null>(null);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
   
   const { saveDraft, getStepDraft, isLoaded } = useSetupDraft();
   const { createSnapshot, getSnapshot, removeSnapshot } = useSetupUndo();
+
+  // Handle AI parsed data
+  const handleAIParsed = (parsedRows: Record<string, any>[]) => {
+    const newRows: GridRow[] = parsedRows.map(() => ({
+      id: crypto.randomUUID(),
+      data: {},
+      errors: {},
+    }));
+    
+    parsedRows.forEach((data, i) => {
+      newRows[i].data = data;
+      // Run validation
+      columns.forEach(col => {
+        if (col.validate) {
+          const error = col.validate(data[col.key] || '');
+          if (error) newRows[i].errors[col.key] = error;
+        }
+      });
+    });
+    
+    setRows(prev => [...prev, ...newRows]);
+  };
+
+  // Handle AI corrections
+  const handleAICorrections = (corrections: Array<{ row: number; field: string; value: string }>) => {
+    setRows(prev => {
+      const updated = [...prev];
+      corrections.forEach(c => {
+        if (updated[c.row]) {
+          updated[c.row] = {
+            ...updated[c.row],
+            data: { ...updated[c.row].data, [c.field]: c.value },
+          };
+          // Re-validate
+          const col = columns.find(col => col.key === c.field);
+          if (col?.validate) {
+            const error = col.validate(c.value);
+            if (error) {
+              updated[c.row].errors = { ...updated[c.row].errors, [c.field]: error };
+            } else {
+              const { [c.field]: _, ...rest } = updated[c.row].errors;
+              updated[c.row].errors = rest;
+            }
+          }
+        }
+      });
+      return updated;
+    });
+  };
 
   // Load draft on mount
   useEffect(() => {
@@ -335,9 +386,17 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
       <Separator />
 
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          {hasErrors && <span className="text-destructive">Corrija os erros antes de aplicar</span>}
-        </p>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline"
+            onClick={() => setShowAIAssistant(true)}
+            className="gap-2"
+          >
+            <Sparkles className="h-4 w-4" />
+            Assistente IA
+          </Button>
+          {hasErrors && <span className="text-sm text-destructive">Corrija os erros antes de aplicar</span>}
+        </div>
         <div className="flex gap-2">
           <Button 
             variant="outline"
@@ -388,6 +447,15 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
           isUndoing={isSaving}
         />
       )}
+      {/* AI Assistant Modal */}
+      <AIAssistantModal
+        open={showAIAssistant}
+        onOpenChange={setShowAIAssistant}
+        step="empresas"
+        currentRows={rows}
+        onApplyParsed={handleAIParsed}
+        onApplyCorrections={handleAICorrections}
+      />
     </div>
   );
 }

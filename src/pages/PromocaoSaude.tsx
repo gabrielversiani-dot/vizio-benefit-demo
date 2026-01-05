@@ -10,90 +10,89 @@ import {
   Heart, 
   Calendar as CalendarIcon, 
   Activity, 
-  Users, 
   TrendingUp, 
   Filter, 
   Eye,
-  Syringe,
-  Brain,
-  Apple,
-  Dumbbell,
-  Shield,
-  MoreHorizontal
+  Plus,
+  Edit,
+  Trash2,
+  FileText,
+  Download
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, parseISO } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useEmpresa } from "@/contexts/EmpresaContext";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { getCampanhaDoMes } from "@/config/campanhasMensais";
+import { CampanhaBadge } from "@/components/PromocaoSaude/CampanhaBadge";
+import { AcaoFormModal } from "@/components/PromocaoSaude/AcaoFormModal";
+import { AcaoDetailModal } from "@/components/PromocaoSaude/AcaoDetailModal";
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; color: string }> = {
   planejada: { label: "Planejada", color: "bg-blue-500/20 text-blue-700 border-blue-500/30" },
   em_andamento: { label: "Em Andamento", color: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30" },
   concluida: { label: "Concluída", color: "bg-green-500/20 text-green-700 border-green-500/30" },
   cancelada: { label: "Cancelada", color: "bg-red-500/20 text-red-700 border-red-500/30" },
 };
 
-const tipoConfig = {
-  campanha: "Campanha",
-  programa: "Programa",
-  evento: "Evento",
-  treinamento: "Treinamento",
-};
-
-const categoriaConfig = {
-  vacinacao: { label: "Vacinação", icon: Syringe, color: "text-purple-600" },
-  checkup: { label: "Check-up", icon: Activity, color: "text-blue-600" },
-  bem_estar: { label: "Bem-estar", icon: Heart, color: "text-pink-600" },
-  nutricional: { label: "Nutricional", icon: Apple, color: "text-green-600" },
-  atividade_fisica: { label: "Atividade Física", icon: Dumbbell, color: "text-orange-600" },
-  saude_mental: { label: "Saúde Mental", icon: Brain, color: "text-indigo-600" },
-  prevencao: { label: "Prevenção", icon: Shield, color: "text-teal-600" },
-  outro: { label: "Outro", icon: MoreHorizontal, color: "text-gray-600" },
-};
-
-type StatusAcao = keyof typeof statusConfig;
-type TipoAcao = keyof typeof tipoConfig;
-type CategoriaAcao = keyof typeof categoriaConfig;
-
 interface AcaoSaude {
   id: string;
+  empresa_id: string;
+  filial_id: string | null;
   titulo: string;
   descricao: string | null;
-  tipo: TipoAcao;
-  categoria: CategoriaAcao;
-  status: StatusAcao;
+  campanha_mes: string | null;
   data_inicio: string;
+  hora_inicio: string | null;
   data_fim: string | null;
+  hora_fim: string | null;
   local: string | null;
-  capacidade_maxima: number | null;
-  created_at: string;
-  empresas?: { nome: string } | null;
+  publico_alvo: string | null;
+  responsavel: string | null;
+  status: string;
+  visibilidade: string;
+  faturamento_entidades?: { nome: string } | null;
 }
 
 const PromocaoSaude = () => {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { empresaSelecionada, isAdminVizio, userRole } = useEmpresa();
+  const { user } = useAuth();
+  
   const [filtroStatus, setFiltroStatus] = useState<string>("todos");
-  const [filtroCategoria, setFiltroCategoria] = useState<string>("todos");
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [formModalOpen, setFormModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedAcao, setSelectedAcao] = useState<AcaoSaude | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+
+  // Check if user is admin (can create/edit/delete)
+  const isAdmin = isAdminVizio || userRole === "admin_empresa";
 
   const { data: acoes = [], isLoading } = useQuery({
-    queryKey: ["acoes_saude", filtroStatus, filtroCategoria],
+    queryKey: ["acoes_saude", empresaSelecionada, filtroStatus],
     queryFn: async () => {
+      if (!empresaSelecionada) return [];
+      
       let query = supabase
         .from("acoes_saude")
-        .select("*, empresas(nome)")
+        .select("*, faturamento_entidades(nome)")
+        .eq("empresa_id", empresaSelecionada)
         .order("data_inicio", { ascending: true });
 
       if (filtroStatus !== "todos") {
-        query = query.eq("status", filtroStatus as StatusAcao);
-      }
-      if (filtroCategoria !== "todos") {
-        query = query.eq("categoria", filtroCategoria as CategoriaAcao);
+        query = query.eq("status", filtroStatus as "planejada" | "em_andamento" | "concluida" | "cancelada");
       }
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as AcaoSaude[];
+      return (data || []) as AcaoSaude[];
     },
+    enabled: !!empresaSelecionada,
   });
 
   const contadores = {
@@ -107,6 +106,8 @@ const PromocaoSaude = () => {
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const currentMonth = currentDate.getMonth() + 1;
+  const campanha = getCampanhaDoMes(currentMonth);
 
   const getAcoesForDay = (day: Date) => {
     return acoes.filter((acao) => {
@@ -124,15 +125,84 @@ const PromocaoSaude = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   };
 
+  const handleDayClick = (day: Date) => {
+    if (isAdmin) {
+      setSelectedDate(day);
+      setSelectedAcao(null);
+      setFormModalOpen(true);
+    }
+  };
+
+  const handleEditAcao = (acao: AcaoSaude) => {
+    setSelectedAcao(acao);
+    setSelectedDate(undefined);
+    setFormModalOpen(true);
+  };
+
+  const handleViewAcao = (acao: AcaoSaude) => {
+    setSelectedAcao(acao);
+    setDetailModalOpen(true);
+  };
+
+  const handleDeleteAcao = async (acao: AcaoSaude) => {
+    if (!confirm(`Excluir a ação "${acao.titulo}"?`)) return;
+    
+    try {
+      const { error } = await supabase
+        .from("acoes_saude")
+        .delete()
+        .eq("id", acao.id);
+      
+      if (error) throw error;
+      
+      toast({ title: "Ação excluída com sucesso" });
+      queryClient.invalidateQueries({ queryKey: ["acoes_saude"] });
+    } catch (error: any) {
+      console.error("Erro ao excluir:", error);
+      toast({ title: "Erro ao excluir", description: error.message, variant: "destructive" });
+    }
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Promoção de Saúde</h1>
-          <p className="text-muted-foreground">
-            Acompanhe campanhas, programas e ações de saúde
-          </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Promoção de Saúde</h1>
+            <p className="text-muted-foreground">
+              Gerencie campanhas, ações e materiais de saúde
+            </p>
+          </div>
+          {isAdmin && (
+            <Button onClick={() => { setSelectedAcao(null); setSelectedDate(undefined); setFormModalOpen(true); }}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nova Ação
+            </Button>
+          )}
         </div>
+
+        {/* Campaign of the month */}
+        {campanha && (
+          <Card className="border-l-4" style={{ borderLeftColor: campanha.corPrimaria }}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-10 h-10 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: `${campanha.corPrimaria}20` }}
+                  >
+                    <Heart className="h-5 w-5" style={{ color: campanha.corPrimaria }} />
+                  </div>
+                  <div>
+                    <p className="font-medium">{campanha.nome}</p>
+                    <p className="text-sm text-muted-foreground">{campanha.descricao}</p>
+                  </div>
+                </div>
+                <CampanhaBadge mes={currentMonth} showSugestoes={isAdmin} />
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* KPIs */}
         <div className="grid gap-4 md:grid-cols-4">
@@ -178,7 +248,7 @@ const PromocaoSaude = () => {
           <TabsList>
             <TabsTrigger value="calendario">Calendário</TabsTrigger>
             <TabsTrigger value="lista">Lista de Ações</TabsTrigger>
-            <TabsTrigger value="indicadores">Indicadores</TabsTrigger>
+            <TabsTrigger value="materiais">Materiais</TabsTrigger>
           </TabsList>
 
           <TabsContent value="calendario" className="space-y-4">
@@ -220,27 +290,26 @@ const PromocaoSaude = () => {
                       return (
                         <div
                           key={day.toISOString()}
-                          className={`min-h-[80px] p-1 border rounded-md ${
+                          onClick={() => handleDayClick(day)}
+                          className={`min-h-[80px] p-1 border rounded-md transition-colors ${
                             isToday ? "border-primary bg-primary/5" : "border-border"
-                          }`}
+                          } ${isAdmin ? "cursor-pointer hover:bg-muted/50" : ""}`}
+                          style={campanha ? { borderTopColor: campanha.corPrimaria, borderTopWidth: 2 } : {}}
                         >
                           <div className={`text-sm ${isToday ? "font-bold text-primary" : ""}`}>
                             {format(day, "d")}
                           </div>
                           <div className="space-y-1 mt-1">
-                            {dayAcoes.slice(0, 2).map((acao) => {
-                              const CategoriaIcon = categoriaConfig[acao.categoria].icon;
-                              return (
-                                <div
-                                  key={acao.id}
-                                  className={`text-xs p-1 rounded truncate flex items-center gap-1 ${statusConfig[acao.status].color}`}
-                                  title={acao.titulo}
-                                >
-                                  <CategoriaIcon className="h-3 w-3 flex-shrink-0" />
-                                  <span className="truncate">{acao.titulo}</span>
-                                </div>
-                              );
-                            })}
+                            {dayAcoes.slice(0, 2).map((acao) => (
+                              <div
+                                key={acao.id}
+                                onClick={(e) => { e.stopPropagation(); handleViewAcao(acao); }}
+                                className={`text-xs p-1 rounded truncate cursor-pointer hover:opacity-80 ${statusConfig[acao.status]?.color || ""}`}
+                                title={acao.titulo}
+                              >
+                                {acao.titulo}
+                              </div>
+                            ))}
                             {dayAcoes.length > 2 && (
                               <div className="text-xs text-muted-foreground">
                                 +{dayAcoes.length - 2} mais
@@ -282,21 +351,6 @@ const PromocaoSaude = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="w-48">
-                    <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Categoria" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todos">Todas as Categorias</SelectItem>
-                        {Object.entries(categoriaConfig).map(([key, { label }]) => (
-                          <SelectItem key={key} value={key}>
-                            {label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -306,7 +360,7 @@ const PromocaoSaude = () => {
               <CardHeader>
                 <CardTitle>Ações de Saúde</CardTitle>
                 <CardDescription>
-                  Lista de todas as campanhas, programas e eventos
+                  Lista de todas as campanhas e ações
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -323,51 +377,66 @@ const PromocaoSaude = () => {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Título</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Categoria</TableHead>
+                        <TableHead>Campanha</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead>Data Início</TableHead>
-                        <TableHead>Data Fim</TableHead>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Local</TableHead>
+                        {isAdmin && <TableHead>Visibilidade</TableHead>}
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {acoes.map((acao) => {
-                        const CategoriaIcon = categoriaConfig[acao.categoria].icon;
-                        return (
-                          <TableRow key={acao.id}>
-                            <TableCell className="font-medium">{acao.titulo}</TableCell>
-                            <TableCell>{tipoConfig[acao.tipo]}</TableCell>
+                      {acoes.map((acao) => (
+                        <TableRow key={acao.id}>
+                          <TableCell className="font-medium">{acao.titulo}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {acao.campanha_mes || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={statusConfig[acao.status]?.color || ""}
+                            >
+                              {statusConfig[acao.status]?.label || acao.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {format(parseISO(acao.data_inicio), "dd/MM/yyyy", { locale: ptBR })}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {acao.local || "-"}
+                          </TableCell>
+                          {isAdmin && (
                             <TableCell>
-                              <div className="flex items-center gap-2">
-                                <CategoriaIcon className={`h-4 w-4 ${categoriaConfig[acao.categoria].color}`} />
-                                {categoriaConfig[acao.categoria].label}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant="outline"
-                                className={statusConfig[acao.status].color}
-                              >
-                                {statusConfig[acao.status].label}
+                              <Badge variant={acao.visibilidade === "cliente" ? "default" : "secondary"}>
+                                {acao.visibilidade === "cliente" ? "Cliente" : "Interno"}
                               </Badge>
                             </TableCell>
-                            <TableCell>
-                              {format(new Date(acao.data_inicio), "dd/MM/yyyy", { locale: ptBR })}
-                            </TableCell>
-                            <TableCell>
-                              {acao.data_fim
-                                ? format(new Date(acao.data_fim), "dd/MM/yyyy", { locale: ptBR })
-                                : "-"}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="ghost" size="sm">
+                          )}
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="sm" onClick={() => handleViewAcao(acao)}>
                                 <Eye className="h-4 w-4" />
                               </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
+                              {isAdmin && (
+                                <>
+                                  <Button variant="ghost" size="sm" onClick={() => handleEditAcao(acao)}>
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => handleDeleteAcao(acao)}
+                                    className="text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 )}
@@ -375,23 +444,42 @@ const PromocaoSaude = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="indicadores" className="space-y-4">
+          <TabsContent value="materiais" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Indicadores de Saúde</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Materiais de Divulgação
+                </CardTitle>
                 <CardDescription>
-                  Métricas de adesão e participação nas ações
+                  Selecione uma ação na lista ou calendário para ver e gerenciar seus materiais
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="text-center py-8 text-muted-foreground">
-                  Nenhum indicador disponível
+                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>Clique em uma ação para visualizar os materiais disponíveis</p>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Modals */}
+      <AcaoFormModal
+        open={formModalOpen}
+        onClose={() => { setFormModalOpen(false); setSelectedAcao(null); setSelectedDate(undefined); }}
+        acao={selectedAcao}
+        defaultDate={selectedDate}
+      />
+
+      <AcaoDetailModal
+        open={detailModalOpen}
+        onClose={() => { setDetailModalOpen(false); setSelectedAcao(null); }}
+        acao={selectedAcao}
+        isAdmin={isAdmin}
+      />
     </AppLayout>
   );
 };

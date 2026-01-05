@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       acoes_saude: {
         Row: {
+          campanha_mes: string | null
           capacidade_maxima: number | null
           categoria: Database["public"]["Enums"]["categoria_acao_saude"]
           created_at: string
@@ -24,17 +25,24 @@ export type Database = {
           data_inicio: string
           descricao: string | null
           empresa_id: string | null
+          filial_id: string | null
+          hora_fim: string | null
+          hora_inicio: string | null
           id: string
           local: string | null
           material_nome: string | null
           material_url: string | null
           observacoes: string | null
+          publico_alvo: string | null
+          responsavel: string | null
           status: Database["public"]["Enums"]["status_acao_saude"]
           tipo: Database["public"]["Enums"]["tipo_acao_saude"]
           titulo: string
           updated_at: string
+          visibilidade: Database["public"]["Enums"]["visibilidade_acao"]
         }
         Insert: {
+          campanha_mes?: string | null
           capacidade_maxima?: number | null
           categoria: Database["public"]["Enums"]["categoria_acao_saude"]
           created_at?: string
@@ -43,17 +51,24 @@ export type Database = {
           data_inicio: string
           descricao?: string | null
           empresa_id?: string | null
+          filial_id?: string | null
+          hora_fim?: string | null
+          hora_inicio?: string | null
           id?: string
           local?: string | null
           material_nome?: string | null
           material_url?: string | null
           observacoes?: string | null
+          publico_alvo?: string | null
+          responsavel?: string | null
           status?: Database["public"]["Enums"]["status_acao_saude"]
           tipo: Database["public"]["Enums"]["tipo_acao_saude"]
           titulo: string
           updated_at?: string
+          visibilidade?: Database["public"]["Enums"]["visibilidade_acao"]
         }
         Update: {
+          campanha_mes?: string | null
           capacidade_maxima?: number | null
           categoria?: Database["public"]["Enums"]["categoria_acao_saude"]
           created_at?: string
@@ -62,15 +77,21 @@ export type Database = {
           data_inicio?: string
           descricao?: string | null
           empresa_id?: string | null
+          filial_id?: string | null
+          hora_fim?: string | null
+          hora_inicio?: string | null
           id?: string
           local?: string | null
           material_nome?: string | null
           material_url?: string | null
           observacoes?: string | null
+          publico_alvo?: string | null
+          responsavel?: string | null
           status?: Database["public"]["Enums"]["status_acao_saude"]
           tipo?: Database["public"]["Enums"]["tipo_acao_saude"]
           titulo?: string
           updated_at?: string
+          visibilidade?: Database["public"]["Enums"]["visibilidade_acao"]
         }
         Relationships: [
           {
@@ -78,6 +99,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "acoes_saude_filial_id_fkey"
+            columns: ["filial_id"]
+            isOneToOne: false
+            referencedRelation: "faturamento_entidades"
             referencedColumns: ["id"]
           },
         ]
@@ -1188,6 +1216,66 @@ export type Database = {
           },
         ]
       }
+      promocao_saude_materiais: {
+        Row: {
+          acao_id: string
+          criado_em: string
+          descricao: string | null
+          empresa_id: string
+          id: string
+          mime_type: string | null
+          storage_bucket: string
+          storage_path: string
+          tamanho: number | null
+          tipo: Database["public"]["Enums"]["tipo_material_saude"]
+          titulo: string
+          visivel_cliente: boolean
+        }
+        Insert: {
+          acao_id: string
+          criado_em?: string
+          descricao?: string | null
+          empresa_id: string
+          id?: string
+          mime_type?: string | null
+          storage_bucket?: string
+          storage_path: string
+          tamanho?: number | null
+          tipo?: Database["public"]["Enums"]["tipo_material_saude"]
+          titulo: string
+          visivel_cliente?: boolean
+        }
+        Update: {
+          acao_id?: string
+          criado_em?: string
+          descricao?: string | null
+          empresa_id?: string
+          id?: string
+          mime_type?: string | null
+          storage_bucket?: string
+          storage_path?: string
+          tamanho?: number | null
+          tipo?: Database["public"]["Enums"]["tipo_material_saude"]
+          titulo?: string
+          visivel_cliente?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promocao_saude_materiais_acao_id_fkey"
+            columns: ["acao_id"]
+            isOneToOne: false
+            referencedRelation: "acoes_saude"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "promocao_saude_materiais_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sinistralidade: {
         Row: {
           categoria: Database["public"]["Enums"]["categoria_beneficio"]
@@ -1641,11 +1729,19 @@ export type Database = {
         | "agendamento"
         | "outro"
       tipo_documento_contrato: "contrato" | "aditivo" | "renovacao"
+      tipo_material_saude:
+        | "whatsapp"
+        | "folder"
+        | "cartaz"
+        | "brinde"
+        | "email"
+        | "outro"
       tipo_movimentacao:
         | "inclusao"
         | "exclusao"
         | "alteracao_cadastral"
         | "mudanca_plano"
+      visibilidade_acao: "interna" | "cliente"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1848,12 +1944,21 @@ export const Constants = {
         "outro",
       ],
       tipo_documento_contrato: ["contrato", "aditivo", "renovacao"],
+      tipo_material_saude: [
+        "whatsapp",
+        "folder",
+        "cartaz",
+        "brinde",
+        "email",
+        "outro",
+      ],
       tipo_movimentacao: [
         "inclusao",
         "exclusao",
         "alteracao_cadastral",
         "mudanca_plano",
       ],
+      visibilidade_acao: ["interna", "cliente"],
     },
   },
 } as const

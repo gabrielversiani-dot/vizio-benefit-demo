@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { FaturaFormModal } from "@/components/Faturamento/FaturaFormModal";
 import { FaturaDetailModal } from "@/components/Faturamento/FaturaDetailModal";
 import { DeleteFaturaModal } from "@/components/Faturamento/DeleteFaturaModal";
+import { usePermissions } from "@/hooks/usePermissions";
 
 type FaturamentoRow = {
   id: string;
@@ -83,22 +84,9 @@ export default function Faturamento() {
   const [selectedFatura, setSelectedFatura] = useState<FaturamentoRow | null>(null);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
 
-  // Fetch user role for permission check
-  const { data: userRole } = useQuery({
-    queryKey: ["user-role"],
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-      const { data } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .single();
-      return data?.role;
-    },
-  });
-
-  const canManage = userRole === "admin_vizio" || userRole === "admin_empresa";
+  // Use permissions hook instead of querying roles directly
+  const { canManageFaturamento, canDownloadFaturamento, isAdmin } = usePermissions();
+  const canManage = canManageFaturamento;
 
   // Fetch empresas (only for admin_vizio)
   const { data: empresas = [] } = useQuery({

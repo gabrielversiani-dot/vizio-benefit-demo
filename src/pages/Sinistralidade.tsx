@@ -18,9 +18,9 @@ import { ImportHistorySection } from "@/components/Sinistralidade/ImportHistoryS
 import { IndicadoresPeriodoSection } from "@/components/Sinistralidade/IndicadoresPeriodoSection";
 import { PDFImportChecklist } from "@/components/Sinistralidade/PDFImportChecklist";
 import { SinistroDocsSection } from "@/components/Sinistralidade/SinistroDocsSection";
-import { useAuth } from "@/hooks/useAuth";
 import { useSinistralidadeResumoPeriodo } from "@/hooks/useSinistralidadeResumoPeriodo";
 import { AIAlertasSection } from "@/components/Sinistralidade/AIAlertasSection";
+import { usePermissions } from "@/hooks/usePermissions";
 
 type Sinistralidade = {
   id: string;
@@ -58,8 +58,9 @@ const formatPercent = (value: number) => {
 
 export default function Sinistralidade() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const { empresaSelecionada } = useEmpresa();
+  const { empresaSelecionada, isAdminVizio } = useEmpresa();
+  const { canImportSinistralidade, canManageSinistralidade, canViewDebug, isAdmin } = usePermissions();
+  
   const [empresaFilter, setEmpresaFilter] = useState<string>("todas");
   const [kpiSource, setKpiSource] = useState<KpiSource>("pdf_importado");
   const [periodoFilter, setPeriodoFilter] = useState<string>("12");
@@ -71,23 +72,9 @@ export default function Sinistralidade() {
     kpiSource === "pdf_importado"
   );
 
-  // Check user roles
-  const { data: userRoles = [] } = useQuery({
-    queryKey: ["user-roles", user?.id],
-    queryFn: async () => {
-      if (!user?.id) return [];
-      const { data } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id);
-      return data?.map(r => r.role) || [];
-    },
-    enabled: !!user?.id
-  });
-
-  const isAdminVizio = userRoles.includes('admin_vizio');
-  const isAdminEmpresa = userRoles.includes('admin_empresa');
-  const canEdit = isAdminVizio || isAdminEmpresa;
+  // Permission-based flags
+  const canEdit = canManageSinistralidade;
+  const canImport = canImportSinistralidade;
 
   // Fetch empresas
   const { data: empresas = [] } = useQuery({
@@ -524,7 +511,7 @@ export default function Sinistralidade() {
                 Análise detalhada de sinistros e utilização de benefícios
               </p>
             </div>
-            {canEdit && (
+            {canImport && (
               <Button onClick={() => setImportModalOpen(true)} size="lg">
                 <Upload className="h-5 w-5 mr-2" />
                 Importar PDF (Unimed BH)
@@ -532,34 +519,49 @@ export default function Sinistralidade() {
             )}
           </div>
 
-          {/* Import CTA Card */}
-          <Card className="border-primary/50 bg-primary/5">
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                <Upload className="h-8 w-8 text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Importe seus dados de sinistralidade</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-                Envie o PDF da Unimed BH para extrair automaticamente os dados de sinistralidade com inteligência artificial.
-              </p>
-              {canEdit && (
+          {/* Import CTA Card - only for admins */}
+          {canImport && (
+            <Card className="border-primary/50 bg-primary/5">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                  <Upload className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Importe seus dados de sinistralidade</h3>
+                <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
+                  Envie o PDF da Unimed BH para extrair automaticamente os dados de sinistralidade com inteligência artificial.
+                </p>
                 <Button onClick={() => setImportModalOpen(true)}>
                   <Upload className="h-4 w-4 mr-2" />
                   Importar PDF (Unimed BH)
                 </Button>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
-          {/* Documentos Section - sempre visível */}
+          {/* Empty state for clients */}
+          {!canImport && (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <Activity className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Nenhum dado de sinistralidade</h3>
+                <p className="text-sm text-muted-foreground text-center max-w-md">
+                  Os dados de sinistralidade ainda não foram importados para sua empresa.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Documentos Section - download only for clients */}
           <SinistroDocsSection 
             empresaId={empresaSelecionada} 
             onImportClick={() => setImportModalOpen(true)}
-            canEdit={canEdit}
+            canEdit={canImport}
           />
 
           {/* Checklist de Teste (somente admin_vizio) */}
-          <PDFImportChecklist visible={isAdminVizio} />
+          {canViewDebug && <PDFImportChecklist visible={isAdminVizio} />}
         </div>
 
         <ImportPDFModal
@@ -589,7 +591,7 @@ export default function Sinistralidade() {
             </p>
           </div>
           <div className="flex gap-3">
-            {canEdit && (
+            {canImport && (
               <Button onClick={() => setImportModalOpen(true)}>
                 <Upload className="h-4 w-4 mr-2" />
                 Importar PDF (Unimed BH)
@@ -739,7 +741,8 @@ export default function Sinistralidade() {
               <CardDescription>Comparativo mensal de prêmio vs sinistros</CardDescription>
             </CardHeader>
             <CardContent>
-              {canEdit && import.meta.env.DEV && (
+              {/* Debug info - only for admins */}
+              {canViewDebug && import.meta.env.DEV && (
                 <p className="mb-2 text-xs text-muted-foreground">
                   Linhas mensais carregadas: {filteredData.length}
                 </p>
@@ -927,17 +930,17 @@ export default function Sinistralidade() {
         <SinistroDocsSection 
           empresaId={empresaSelecionada} 
           onImportClick={() => setImportModalOpen(true)}
-          canEdit={canEdit}
+          canEdit={canImport}
         />
 
         {/* Indicadores de Período */}
         <IndicadoresPeriodoSection empresaId={empresaSelecionada || undefined} />
 
-        {/* Histórico de Importações PDF */}
-        <ImportHistorySection empresaId={empresaSelecionada || undefined} />
+        {/* Histórico de Importações PDF - only for admins */}
+        {isAdmin && <ImportHistorySection empresaId={empresaSelecionada || undefined} />}
 
         {/* Checklist de Teste (somente admin_vizio) */}
-        <PDFImportChecklist visible={isAdminVizio} />
+        {canViewDebug && <PDFImportChecklist visible={isAdminVizio} />}
       </div>
 
       <ImportPDFModal

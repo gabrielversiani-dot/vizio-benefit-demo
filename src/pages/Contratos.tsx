@@ -74,6 +74,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ContratoFormModal } from "@/components/Contratos/ContratoFormModal";
 import { ContratoDetailModal } from "@/components/Contratos/ContratoDetailModal";
+import { usePermissions } from "@/hooks/usePermissions";
 
 type TipoDocumento = 'contrato' | 'aditivo' | 'renovacao';
 type StatusContrato = 'ativo' | 'vencido' | 'em_renovacao' | 'suspenso' | 'cancelado';
@@ -129,8 +130,9 @@ const produtoConfig = {
 
 export default function Contratos() {
   const { user } = useAuth();
-  const { empresaSelecionada, isAdminVizio, userRole } = useEmpresa();
+  const { empresaSelecionada, isAdminVizio } = useEmpresa();
   const queryClient = useQueryClient();
+  const { canManageContratos, canDownloadContratos, hasPermission, isAdmin } = usePermissions();
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingContrato, setEditingContrato] = useState<Contrato | null>(null);
@@ -145,8 +147,8 @@ export default function Contratos() {
   const [filialFilter, setFilialFilter] = useState<string>('todos');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const canManage = isAdminVizio || userRole === 'admin_empresa' || userRole === 'rh_gestor';
-  const canDelete = isAdminVizio || userRole === 'admin_empresa';
+  const canManage = canManageContratos;
+  const canDelete = hasPermission("contratos:delete");
 
   // Fetch contratos with document count
   const { data: contratos = [], isLoading: loadingContratos } = useQuery({

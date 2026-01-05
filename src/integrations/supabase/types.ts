@@ -1021,10 +1021,13 @@ export type Database = {
           operadora: string | null
           periodo_fim: string
           periodo_inicio: string
+          premio_medio_periodo: number | null
           produto: string | null
           quebras: Json | null
+          sinistros_medio_periodo: number | null
           tipo_relatorio: string
           updated_at: string
+          vidas_ativas_media_periodo: number | null
         }
         Insert: {
           created_at?: string
@@ -1038,10 +1041,13 @@ export type Database = {
           operadora?: string | null
           periodo_fim: string
           periodo_inicio: string
+          premio_medio_periodo?: number | null
           produto?: string | null
           quebras?: Json | null
+          sinistros_medio_periodo?: number | null
           tipo_relatorio: string
           updated_at?: string
+          vidas_ativas_media_periodo?: number | null
         }
         Update: {
           created_at?: string
@@ -1055,10 +1061,13 @@ export type Database = {
           operadora?: string | null
           periodo_fim?: string
           periodo_inicio?: string
+          premio_medio_periodo?: number | null
           produto?: string | null
           quebras?: Json | null
+          sinistros_medio_periodo?: number | null
           tipo_relatorio?: string
           updated_at?: string
+          vidas_ativas_media_periodo?: number | null
         }
         Relationships: [
           {

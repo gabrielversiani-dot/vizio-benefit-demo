@@ -401,122 +401,92 @@ export default function Sinistralidade() {
           </div>
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {/* KPI Índice Médio - Usa media_periodo do PDF quando disponível */}
-          <Card className={kpiSource === "pdf_importado" && hasPdfMedia ? "ring-2 ring-primary/50" : ""}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Activity className="h-5 w-5 text-primary" />
-                  </div>
-                  <p className="text-sm font-medium text-muted-foreground">Índice Médio</p>
+        {/* KPI Cards - 4 cards using period averages from PDF */}
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+          {/* Card 1: Índice Médio */}
+          <Card className={kpiSource === "pdf_importado" && hasPdfMedia ? "ring-2 ring-primary/20" : ""}>
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Activity className="h-4 w-4 text-primary" />
                 </div>
-                {/* Tooltip com informações de debug */}
-                <TooltipProvider>
-                  <UITooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent side="left" className="max-w-xs">
-                      <div className="space-y-1 text-xs">
-                        <p><strong>Fonte:</strong> {kpiSource === "pdf_importado" && hasPdfMedia ? "Média do Relatório PDF" : "Calculado (mensal)"}</p>
-                        {resumo.periodo_inicio && resumo.periodo_fim && (
-                          <p><strong>Período:</strong> {format(new Date(resumo.periodo_inicio), "dd/MM/yyyy")} – {format(new Date(resumo.periodo_fim), "dd/MM/yyyy")}</p>
-                        )}
-                        {resumo.operadora && <p><strong>Operadora:</strong> {resumo.operadora}</p>}
-                        {hasPdfMedia && <p><strong>Média PDF:</strong> {resumo.media_periodo?.toFixed(2)}%</p>}
-                        <p><strong>Calculado:</strong> {resumo.calculated_media.toFixed(2)}%</p>
-                      </div>
-                    </TooltipContent>
-                  </UITooltip>
-                </TooltipProvider>
+                <p className="text-xs font-medium text-muted-foreground">Índice Médio</p>
               </div>
-              
-              {/* Valor principal */}
-              <p className="text-3xl font-bold">
-                {kpiSource === "pdf_importado" && hasPdfMedia 
-                  ? formatPercent(resumo.media_periodo!) 
+              <p className="text-2xl font-bold">
+                {kpiSource === "pdf_importado" && hasPdfMedia && resumo.media_periodo != null
+                  ? formatPercent(resumo.media_periodo)
                   : formatPercent(kpis.mediaSinistralidade)}
               </p>
-              
-              {/* Badge de fonte */}
-              <div className="flex items-center gap-2 mt-2">
-                {kpiSource === "pdf_importado" && hasPdfMedia ? (
-                  <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
-                    Fonte: Média do Relatório ({resumo.operadora || "PDF"})
-                  </Badge>
-                ) : (
-                  <>
-                    <Badge variant="outline" className="text-xs">
-                      Fonte: Calculado (mensal)
-                    </Badge>
-                    {kpis.tendencia > 0 ? (
-                      <TrendingUp className="h-4 w-4 text-destructive" />
-                    ) : (
-                      <TrendingDown className="h-4 w-4 text-green-600" />
-                    )}
-                    <p className={`text-xs ${kpis.tendencia > 0 ? 'text-destructive' : 'text-green-600'}`}>
-                      {kpis.tendencia > 0 ? '+' : ''}{kpis.tendencia.toFixed(1)}%
-                    </p>
-                  </>
-                )}
-              </div>
-
-              {/* Debug info para admin_vizio */}
-              {isAdminVizio && (
-                <div className="mt-3 p-2 bg-muted/50 rounded text-xs text-muted-foreground space-y-0.5">
-                  <p>🔧 Debug: source={resumo.source}</p>
-                  <p>media_periodo={resumo.media_periodo ?? "null"}</p>
-                  <p>calculated={resumo.calculated_media.toFixed(2)}</p>
-                  {resumo.periodo_inicio && <p>periodo={resumo.periodo_inicio} → {resumo.periodo_fim}</p>}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-blue-500" />
-                </div>
-                <p className="text-sm font-medium text-muted-foreground">Total Prêmio</p>
-              </div>
-              <p className="text-3xl font-bold">{formatCurrency(kpis.totalPremio)}</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Receita no período
+              <p className="text-xs text-muted-foreground mt-1.5">
+                {kpiSource === "pdf_importado" && hasPdfMedia
+                  ? `Média do Relatório (${resumo.operadora || "PDF"})`
+                  : "Calculado (mensal)"}
               </p>
             </CardContent>
           </Card>
 
+          {/* Card 2: Prêmio Médio (período) */}
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="h-10 w-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
-                  <AlertTriangle className="h-5 w-5 text-orange-500" />
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-9 w-9 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                  <FileText className="h-4 w-4 text-blue-500" />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">Total Sinistros</p>
+                <p className="text-xs font-medium text-muted-foreground">Prêmio Médio</p>
               </div>
-              <p className="text-3xl font-bold">{formatCurrency(kpis.totalSinistros)}</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                {kpis.totalQuantidade.toLocaleString('pt-BR')} ocorrências
+              <p className="text-2xl font-bold">
+                {kpiSource === "pdf_importado" && hasPdfMedia && resumo.premio_medio_periodo != null
+                  ? formatCurrency(resumo.premio_medio_periodo)
+                  : formatCurrency(resumo.calculated_premio)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                {kpiSource === "pdf_importado" && hasPdfMedia && resumo.premio_medio_periodo != null
+                  ? "Receita Total (média do período)"
+                  : "Média calculada (mensal)"}
               </p>
             </CardContent>
           </Card>
 
+          {/* Card 3: Sinistros Médio (período) */}
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-                  <TrendingDown className="h-5 w-5 text-green-500" />
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-9 w-9 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                  <AlertTriangle className="h-4 w-4 text-orange-500" />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">Margem</p>
+                <p className="text-xs font-medium text-muted-foreground">Sinistros Médio</p>
               </div>
-              <p className="text-3xl font-bold">{formatCurrency(kpis.totalPremio - kpis.totalSinistros)}</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Prêmio - Sinistros
+              <p className="text-2xl font-bold">
+                {kpiSource === "pdf_importado" && hasPdfMedia && resumo.sinistros_medio_periodo != null
+                  ? formatCurrency(resumo.sinistros_medio_periodo)
+                  : formatCurrency(resumo.calculated_sinistros)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                {kpiSource === "pdf_importado" && hasPdfMedia && resumo.sinistros_medio_periodo != null
+                  ? "Custo Assistencial (média do período)"
+                  : "Média calculada (mensal)"}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Card 4: Vidas Ativas (média) */}
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-9 w-9 rounded-lg bg-green-500/10 flex items-center justify-center">
+                  <Building2 className="h-4 w-4 text-green-500" />
+                </div>
+                <p className="text-xs font-medium text-muted-foreground">Vidas Ativas</p>
+              </div>
+              <p className="text-2xl font-bold">
+                {kpiSource === "pdf_importado" && hasPdfMedia && resumo.vidas_ativas_media_periodo != null
+                  ? resumo.vidas_ativas_media_periodo.toLocaleString('pt-BR')
+                  : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                {kpiSource === "pdf_importado" && hasPdfMedia && resumo.vidas_ativas_media_periodo != null
+                  ? "Contingente médio do período"
+                  : "Disponível após importação"}
               </p>
             </CardContent>
           </Card>

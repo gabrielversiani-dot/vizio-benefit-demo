@@ -191,13 +191,17 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
       const pages = await renderPdfToImages(selectedFile);
       setProgress(30);
 
-      // 2. Upload PDF to storage
+      // 2. Upload PDF to storage (sinistralidade_pdfs bucket)
       toast({ title: "Enviando arquivo...", description: "Salvando PDF no servidor." });
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
       const timestamp = Date.now();
-      const filePath = `${selectedEmpresaId}/sinistralidade/${timestamp}-${selectedFile.name}`;
+      const sanitizedName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filePath = `${selectedEmpresaId}/unimed_bh/${year}/${month}/${timestamp}-${sanitizedName}`;
       
       const { error: uploadError } = await supabase.storage
-        .from('imports')
+        .from('sinistralidade_pdfs')
         .upload(filePath, selectedFile);
 
       if (uploadError) {
@@ -241,6 +245,34 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
       setOriginalRows(result.extractedData.rows);
       setJobId(result.jobId);
       setChangesSaved(true);
+
+      // 4. Save document record in sinistralidade_documentos
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const competencias = result.extractedData.rows
+          .map((r: ExtractedRow) => r.competencia)
+          .filter((c: string | null): c is string => c !== null);
+
+        await supabase
+          .from('sinistralidade_documentos')
+          .insert({
+            empresa_id: selectedEmpresaId,
+            operadora: result.extractedData.meta?.operadora || 'Unimed BH',
+            tipo_relatorio: result.extractedData.document_type,
+            periodo_inicio: result.extractedData.meta?.periodo_inicio,
+            periodo_fim: result.extractedData.meta?.periodo_fim,
+            competencias: competencias.length > 0 ? competencias : null,
+            file_path: filePath,
+            file_name: selectedFile.name,
+            file_size: selectedFile.size,
+            status: 'analyzed',
+            import_job_id: result.jobId,
+            ai_summary: result.extractedData.summary ? 
+              `${result.extractedData.summary.rows} registros, ${result.extractedData.summary.errors} erros, ${result.extractedData.summary.warnings} avisos` : null,
+            uploaded_by: user.id,
+          });
+      }
+
       setStep('preview');
 
       toast({
@@ -361,6 +393,14 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
       }
 
       const result = await response.json();
+
+      // Update document status to 'applied'
+      if (jobId) {
+        await supabase
+          .from('sinistralidade_documentos')
+          .update({ status: 'applied' })
+          .eq('import_job_id', jobId);
+      }
 
       toast({
         title: "Dados importados!",

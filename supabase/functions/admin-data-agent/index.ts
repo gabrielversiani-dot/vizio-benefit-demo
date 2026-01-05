@@ -523,8 +523,8 @@ serve(async (req) => {
     console.log('User roles verified:', userRoles);
 
     // 5. Parse request body
-    const { action, jobId, empresaId, filePath, columnMapping: customMapping, goal, rows } = await req.json();
-    console.log('Request:', { action, jobId, empresaId, goal: goal?.substring(0, 50) });
+    const { action, jobId, empresaId, filePath, columnMapping: customMapping, goal, rows, parentJobId } = await req.json();
+    console.log('Request:', { action, jobId, empresaId, parentJobId, goal: goal?.substring(0, 50) });
 
     // 6. Validate empresa_id scope (multi-tenant security)
     if (empresaId) {
@@ -554,6 +554,35 @@ serve(async (req) => {
         });
       }
 
+      // Check for parent job (reimport mode)
+      let parentJob = null;
+      let parentColumnMapping = null;
+      let isReimport = false;
+      
+      if (parentJobId) {
+        const { data: pJob, error: pError } = await supabaseAdmin
+          .from('import_jobs')
+          .select('id, empresa_id, data_type, column_mapping, error_rows, warning_rows')
+          .eq('id', parentJobId)
+          .maybeSingle();
+        
+        if (pError) {
+          console.error('Parent job fetch error:', pError);
+        } else if (pJob) {
+          // Validate parent belongs to same empresa
+          if (pJob.empresa_id !== empresaId) {
+            return new Response(JSON.stringify({ error: 'Job pai pertence a outra empresa' }), {
+              status: 403,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+          parentJob = pJob;
+          parentColumnMapping = pJob.column_mapping;
+          isReimport = true;
+          console.log('Reimport mode: parent job', parentJobId, 'type:', pJob.data_type);
+        }
+      }
+
       // Download file from storage
       const { data: fileData, error: downloadError } = await supabaseAdmin.storage
         .from('imports')
@@ -577,10 +606,31 @@ serve(async (req) => {
         });
       }
 
-      const detectedDataType = detectDataType(headers);
-      console.log('Detected data type:', detectedDataType, 'Rows:', parsedRows.length);
+      // Use parent data_type if reimport, otherwise detect
+      const detectedDataType = isReimport && parentJob?.data_type 
+        ? parentJob.data_type 
+        : detectDataType(headers);
+      console.log('Data type:', detectedDataType, 'Rows:', parsedRows.length, 'Reimport:', isReimport);
 
-      const columnMapping = customMapping || mapColumns(headers, detectedDataType);
+      // Use parent column mapping if available and headers are compatible, otherwise detect
+      let columnMapping = customMapping;
+      let usedParentMapping = false;
+      
+      if (!columnMapping && parentColumnMapping) {
+        // Check if parent mapping keys exist in current headers
+        const parentKeys = Object.keys(parentColumnMapping);
+        const headersLower = headers.map(h => h.toLowerCase());
+        const compatible = parentKeys.every(k => headersLower.includes(k.toLowerCase()));
+        if (compatible) {
+          columnMapping = parentColumnMapping;
+          usedParentMapping = true;
+          console.log('Reusing parent column mapping');
+        }
+      }
+      
+      if (!columnMapping) {
+        columnMapping = mapColumns(headers, detectedDataType);
+      }
       
       let existingCPFs = new Set<string>();
       const existingTitularesDb = new Map<string, string>(); // cpf -> id
@@ -720,6 +770,20 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
         aiSummary = `Resumo automático: ${parsedRows.length} linhas detectadas como ${detectedDataType}. ${validCount} válidas, ${warningCount} com avisos, ${errorCount} com erros.`;
       }
 
+      // Calculate resolved counts for reimport
+      const resolvedCounts = isReimport && parentJob ? {
+        errors_fixed_estimate: Math.max(0, parentJob.error_rows - errorCount),
+        warnings_fixed_estimate: Math.max(0, parentJob.warning_rows - warningCount),
+      } : null;
+
+      // Build AI suggestions with reimport info
+      const aiSuggestions = {
+        used_parent_mapping: usedParentMapping,
+        is_reimport: isReimport,
+        parent_job_id: parentJobId || null,
+        resolved_counts: resolvedCounts,
+      };
+
       // Create import job (staging only - no writes to final tables)
       const { data: job, error: jobError } = await supabaseAdmin
         .from('import_jobs')
@@ -736,7 +800,9 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
           duplicate_rows: duplicateCount,
           column_mapping: columnMapping,
           ai_summary: aiSummary,
+          ai_suggestions: aiSuggestions,
           criado_por: user.id,
+          parent_job_id: parentJobId || null,
         })
         .select()
         .single();
@@ -874,6 +940,8 @@ Seja conciso e objetivo. Responda sempre em português do Brasil.`;
           status: 'completed',
           aprovado_por: user.id,
           data_aprovacao: new Date().toISOString(),
+          applied_by: user.id,
+          applied_at: new Date().toISOString(),
         })
         .eq('id', jobId);
 

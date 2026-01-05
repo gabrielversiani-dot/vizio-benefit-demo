@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Bot, CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ArrowLeft, Bot, CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronLeft, ChevronRight, Search, GitBranch } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDebounce } from "@/hooks/useDebounce";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,8 @@ import { useEmpresa } from "@/contexts/EmpresaContext";
 import { ImportJobChecklist } from "@/components/Admin/ImportJobChecklist";
 import { PostApprovalValidation } from "@/components/Admin/PostApprovalValidation";
 import { ExportJobCSV } from "@/components/Admin/ExportJobCSV";
+import { ReimportModal } from "@/components/Admin/ReimportModal";
+import { ReimportComparison } from "@/components/Admin/ReimportComparison";
 
 type ImportJob = {
   id: string;
@@ -38,6 +40,7 @@ type ImportJob = {
   criado_por: string;
   aprovado_por: string | null;
   data_aprovacao: string | null;
+  parent_job_id: string | null;
 };
 
 type ImportJobRow = {
@@ -294,16 +297,29 @@ const ImportacaoJobPreview = () => {
             <p className="text-muted-foreground font-mono text-sm">{job.arquivo_nome}</p>
           </div>
           
-          {/* Status Badge */}
-          <Badge 
-            variant={job.status === "completed" ? "default" : job.status === "rejected" ? "destructive" : "secondary"}
-            className="text-sm px-3 py-1"
-          >
-            {job.status === "ready_for_review" ? "Aguardando Revisão" : 
-             job.status === "completed" ? "Concluído" : 
-             job.status === "rejected" ? "Rejeitado" : job.status}
-          </Badge>
+          {/* Status Badge + Reimport Badge */}
+          <div className="flex items-center gap-2">
+            {job.parent_job_id && (
+              <Badge variant="outline" className="bg-primary/10">
+                <GitBranch className="h-3 w-3 mr-1" />
+                Reimportação
+              </Badge>
+            )}
+            <Badge 
+              variant={job.status === "completed" ? "default" : job.status === "rejected" ? "destructive" : "secondary"}
+              className="text-sm px-3 py-1"
+            >
+              {job.status === "ready_for_review" ? "Aguardando Revisão" : 
+               job.status === "completed" ? "Concluído" : 
+               job.status === "rejected" ? "Rejeitado" : job.status}
+            </Badge>
+          </div>
         </div>
+
+        {/* Reimport Comparison (if this is a reimport) */}
+        {job.parent_job_id && (
+          <ReimportComparison jobId={job.id} parentJobId={job.parent_job_id} />
+        )}
 
         {/* Summary Cards */}
         <div className="grid gap-4 md:grid-cols-5">
@@ -571,7 +587,23 @@ const ImportacaoJobPreview = () => {
         {/* Action Buttons */}
         {job.status === "ready_for_review" && (
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-6 space-y-4">
+              {/* Reimport button (when there are errors/warnings) */}
+              {(job.error_rows > 0 || job.warning_rows > 0) && (
+                <div className="flex justify-end">
+                  <ReimportModal
+                    jobId={job.id}
+                    empresaId={job.empresa_id}
+                    dataType={job.data_type}
+                    errorRows={job.error_rows}
+                    warningRows={job.warning_rows}
+                    onExportErrors={() => {
+                      // Trigger filtered export with error status
+                      handleStatusChange("error");
+                    }}
+                  />
+                </div>
+              )}
               <div className="flex gap-4">
                 <AlertDialog>
                   <AlertDialogTrigger asChild>

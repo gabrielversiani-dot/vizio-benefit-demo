@@ -1,32 +1,34 @@
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Building2, TrendingUp, Users, FileText } from "lucide-react";
-import { LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
-import { useQuery } from "@tanstack/react-query";
+import { DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Building2, Plus, Eye, Pencil, Trash2, FileText, Heart, Shield, Smile } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { toast } from "sonner";
+import { FaturaFormModal } from "@/components/Faturamento/FaturaFormModal";
+import { FaturaDetailModal } from "@/components/Faturamento/FaturaDetailModal";
+import { DeleteFaturaModal } from "@/components/Faturamento/DeleteFaturaModal";
 
-type Faturamento = {
+type FaturamentoRow = {
   id: string;
   empresa_id: string;
+  produto: "saude" | "vida" | "odonto";
   competencia: string;
-  categoria: string;
-  valor_mensalidade: number;
-  valor_coparticipacao: number | null;
-  valor_reembolsos: number | null;
+  vencimento: string;
   valor_total: number;
-  total_vidas: number;
-  total_titulares: number;
-  total_dependentes: number;
-  status: string;
-  data_vencimento: string | null;
-  data_pagamento: string | null;
+  status: "aguardando_pagamento" | "pago" | "atraso" | "cancelado";
+  pago_em: string | null;
+  observacao: string | null;
+  criado_por: string;
+  created_at: string;
+  updated_at: string;
 };
 
 type Empresa = {
@@ -34,19 +36,17 @@ type Empresa = {
   nome: string;
 };
 
-const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))'];
-
 const statusConfig: Record<string, { label: string; color: string; icon: typeof CheckCircle }> = {
   pago: { label: "Pago", color: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300", icon: CheckCircle },
-  pendente: { label: "Pendente", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300", icon: Clock },
-  vencido: { label: "Vencido", color: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300", icon: AlertCircle },
+  aguardando_pagamento: { label: "Aguardando", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300", icon: Clock },
+  atraso: { label: "Em Atraso", color: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300", icon: AlertCircle },
   cancelado: { label: "Cancelado", color: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300", icon: AlertCircle },
 };
 
-const categoriaLabels: Record<string, string> = {
-  saude: "Saúde",
-  vida: "Vida",
-  odonto: "Odonto",
+const produtoConfig: Record<string, { label: string; color: string; icon: typeof Heart }> = {
+  saude: { label: "Saúde", color: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300", icon: Heart },
+  vida: { label: "Vida", color: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300", icon: Shield },
+  odonto: { label: "Odonto", color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300", icon: Smile },
 };
 
 const formatCurrency = (value: number) => {
@@ -54,12 +54,38 @@ const formatCurrency = (value: number) => {
 };
 
 export default function Faturamento() {
-  const { empresaSelecionada } = useEmpresa();
+  const { empresaSelecionada, isAdminVizio } = useEmpresa();
+  const queryClient = useQueryClient();
+  
   const [empresaFilter, setEmpresaFilter] = useState<string>("todas");
   const [periodoFilter, setPeriodoFilter] = useState<string>("12");
-  const [categoriaFilter, setCategoriaFilter] = useState<string>("todas");
+  const [produtoFilter, setProdutoFilter] = useState<string>("todos");
+  const [statusFilter, setStatusFilter] = useState<string>("todos");
+  
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [selectedFatura, setSelectedFatura] = useState<FaturamentoRow | null>(null);
+  const [formMode, setFormMode] = useState<"create" | "edit">("create");
 
-  // Fetch empresas
+  // Fetch user role for permission check
+  const { data: userRole } = useQuery({
+    queryKey: ["user-role"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .single();
+      return data?.role;
+    },
+  });
+
+  const canManage = userRole === "admin_vizio" || userRole === "admin_empresa";
+
+  // Fetch empresas (only for admin_vizio)
   const { data: empresas = [] } = useQuery({
     queryKey: ["empresas"],
     queryFn: async () => {
@@ -71,20 +97,22 @@ export default function Faturamento() {
       if (error) throw error;
       return data as Empresa[];
     },
+    enabled: isAdminVizio,
   });
 
-  // Fetch faturamento
-  const { data: faturamento = [], isLoading } = useQuery({
-    queryKey: ["faturamento", empresaSelecionada, periodoFilter],
+  // Fetch faturamentos
+  const { data: faturamentos = [], isLoading } = useQuery({
+    queryKey: ["faturamentos", empresaSelecionada, periodoFilter],
     queryFn: async () => {
       const mesesAtras = new Date();
       mesesAtras.setMonth(mesesAtras.getMonth() - parseInt(periodoFilter));
       
       let query = supabase
-        .from("faturamento")
+        .from("faturamentos")
         .select("*")
         .gte("competencia", mesesAtras.toISOString().split('T')[0])
-        .order("competencia", { ascending: false });
+        .order("competencia", { ascending: false })
+        .order("vencimento", { ascending: false });
       
       if (empresaSelecionada) {
         query = query.eq("empresa_id", empresaSelecionada);
@@ -92,134 +120,100 @@ export default function Faturamento() {
       
       const { data, error } = await query;
       if (error) throw error;
-      return data as Faturamento[];
+      return data as FaturamentoRow[];
     },
   });
 
+  // Auto-update status for overdue invoices
+  const updateOverdueMutation = useMutation({
+    mutationFn: async (overdueIds: string[]) => {
+      const { error } = await supabase
+        .from("faturamentos")
+        .update({ status: "atraso" })
+        .in("id", overdueIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["faturamentos"] });
+    },
+  });
+
+  // Check and update overdue invoices
+  useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const overdueInvoices = faturamentos.filter(
+      f => f.status === "aguardando_pagamento" && f.vencimento < today
+    );
+    if (overdueInvoices.length > 0) {
+      updateOverdueMutation.mutate(overdueInvoices.map(f => f.id));
+    }
+  }, [faturamentos]);
+
   // Filter data
   const filteredData = useMemo(() => {
-    let data = faturamento;
-    if (empresaFilter !== "todas") {
+    let data = faturamentos;
+    if (empresaFilter !== "todas" && isAdminVizio) {
       data = data.filter(f => f.empresa_id === empresaFilter);
     }
-    if (categoriaFilter !== "todas") {
-      data = data.filter(f => f.categoria === categoriaFilter);
+    if (produtoFilter !== "todos") {
+      data = data.filter(f => f.produto === produtoFilter);
+    }
+    if (statusFilter !== "todos") {
+      data = data.filter(f => f.status === statusFilter);
     }
     return data;
-  }, [faturamento, empresaFilter, categoriaFilter]);
+  }, [faturamentos, empresaFilter, produtoFilter, statusFilter, isAdminVizio]);
 
   // KPIs
   const kpis = useMemo(() => {
-    const totalFaturado = filteredData
+    const totalPeriodo = filteredData.reduce((acc, f) => acc + Number(f.valor_total), 0);
+    const totalAberto = filteredData
+      .filter(f => f.status === "aguardando_pagamento")
+      .reduce((acc, f) => acc + Number(f.valor_total), 0);
+    const totalAtraso = filteredData
+      .filter(f => f.status === "atraso")
+      .reduce((acc, f) => acc + Number(f.valor_total), 0);
+    const totalPago = filteredData
       .filter(f => f.status === "pago")
       .reduce((acc, f) => acc + Number(f.valor_total), 0);
-    
-    const totalPendente = filteredData
-      .filter(f => f.status === "pendente")
-      .reduce((acc, f) => acc + Number(f.valor_total), 0);
-    
-    const totalVencido = filteredData
-      .filter(f => f.status === "vencido")
-      .reduce((acc, f) => acc + Number(f.valor_total), 0);
-    
-    const totalVidas = filteredData.length > 0 
-      ? Math.max(...filteredData.map(f => f.total_vidas))
-      : 0;
 
-    const faturaspagas = filteredData.filter(f => f.status === "pago").length;
-    const faturasPendentes = filteredData.filter(f => f.status === "pendente").length;
-    const faturasVencidas = filteredData.filter(f => f.status === "vencido").length;
-
-    // Ticket médio por vida
-    const ultimaCompetencia = filteredData[0];
-    const ticketMedio = ultimaCompetencia && ultimaCompetencia.total_vidas > 0
-      ? Number(ultimaCompetencia.valor_total) / ultimaCompetencia.total_vidas
-      : 0;
-
-    return { 
-      totalFaturado, 
-      totalPendente, 
-      totalVencido, 
-      totalVidas,
-      faturaspagas,
-      faturasPendentes,
-      faturasVencidas,
-      ticketMedio
-    };
+    return { totalPeriodo, totalAberto, totalAtraso, totalPago };
   }, [filteredData]);
 
-  // Chart data - Evolução mensal
-  const evolucaoMensal = useMemo(() => {
-    const grouped: Record<string, { mes: string; mensalidade: number; coparticipacao: number; reembolsos: number; total: number }> = {};
-    
-    filteredData.forEach(f => {
-      const mes = format(new Date(f.competencia), "MMM/yy", { locale: ptBR });
-      if (!grouped[f.competencia]) {
-        grouped[f.competencia] = { mes, mensalidade: 0, coparticipacao: 0, reembolsos: 0, total: 0 };
-      }
-      grouped[f.competencia].mensalidade += Number(f.valor_mensalidade);
-      grouped[f.competencia].coparticipacao += Number(f.valor_coparticipacao || 0);
-      grouped[f.competencia].reembolsos += Number(f.valor_reembolsos || 0);
-      grouped[f.competencia].total += Number(f.valor_total);
-    });
+  // Handlers
+  const handleNewFatura = () => {
+    setSelectedFatura(null);
+    setFormMode("create");
+    setIsFormOpen(true);
+  };
 
-    return Object.entries(grouped)
-      .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
-      .map(([, v]) => v);
-  }, [filteredData]);
+  const handleEditFatura = (fatura: FaturamentoRow) => {
+    setSelectedFatura(fatura);
+    setFormMode("edit");
+    setIsFormOpen(true);
+  };
 
-  // Chart data - Evolução de vidas
-  const evolucaoVidas = useMemo(() => {
-    const grouped: Record<string, { mes: string; titulares: number; dependentes: number; total: number }> = {};
-    
-    filteredData.forEach(f => {
-      const mes = format(new Date(f.competencia), "MMM/yy", { locale: ptBR });
-      if (!grouped[f.competencia]) {
-        grouped[f.competencia] = { mes, titulares: 0, dependentes: 0, total: 0 };
-      }
-      grouped[f.competencia].titulares = Math.max(grouped[f.competencia].titulares, f.total_titulares);
-      grouped[f.competencia].dependentes = Math.max(grouped[f.competencia].dependentes, f.total_dependentes);
-      grouped[f.competencia].total = Math.max(grouped[f.competencia].total, f.total_vidas);
-    });
+  const handleViewFatura = (fatura: FaturamentoRow) => {
+    setSelectedFatura(fatura);
+    setIsDetailOpen(true);
+  };
 
-    return Object.entries(grouped)
-      .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
-      .map(([, v]) => v);
-  }, [filteredData]);
+  const handleDeleteFatura = (fatura: FaturamentoRow) => {
+    setSelectedFatura(fatura);
+    setIsDeleteOpen(true);
+  };
 
-  // Dados por empresa para tabela
-  const dadosPorEmpresa = useMemo(() => {
-    if (empresaSelecionada || empresaFilter !== "todas") return [];
-    
-    const grouped: Record<string, { empresa: string; faturado: number; pendente: number; vencido: number; vidas: number }> = {};
-    
-    faturamento.forEach(f => {
-      const empresa = empresas.find(e => e.id === f.empresa_id);
-      if (!grouped[f.empresa_id]) {
-        grouped[f.empresa_id] = { 
-          empresa: empresa?.nome || "Desconhecida", 
-          faturado: 0, 
-          pendente: 0, 
-          vencido: 0,
-          vidas: 0
-        };
-      }
-      if (f.status === "pago") grouped[f.empresa_id].faturado += Number(f.valor_total);
-      if (f.status === "pendente") grouped[f.empresa_id].pendente += Number(f.valor_total);
-      if (f.status === "vencido") grouped[f.empresa_id].vencido += Number(f.valor_total);
-      grouped[f.empresa_id].vidas = Math.max(grouped[f.empresa_id].vidas, f.total_vidas);
-    });
+  const handleFormSuccess = () => {
+    setIsFormOpen(false);
+    setSelectedFatura(null);
+    queryClient.invalidateQueries({ queryKey: ["faturamentos"] });
+  };
 
-    return Object.values(grouped).sort((a, b) => b.faturado - a.faturado);
-  }, [faturamento, empresas, empresaSelecionada, empresaFilter]);
-
-  // Faturas recentes
-  const faturasRecentes = useMemo(() => {
-    return filteredData.slice(0, 10).map(f => ({
-      ...f,
-      empresaNome: empresas.find(e => e.id === f.empresa_id)?.nome || "Desconhecida"
-    }));
-  }, [filteredData, empresas]);
+  const handleDeleteSuccess = () => {
+    setIsDeleteOpen(false);
+    setSelectedFatura(null);
+    queryClient.invalidateQueries({ queryKey: ["faturamentos"] });
+  };
 
   if (isLoading) {
     return (
@@ -231,14 +225,15 @@ export default function Faturamento() {
     );
   }
 
-  if (faturamento.length === 0) {
+  // Empty state
+  if (faturamentos.length === 0) {
     return (
       <AppLayout>
         <div className="space-y-8">
           <div>
             <h1 className="text-4xl font-bold tracking-tight">Faturamento</h1>
             <p className="mt-2 text-muted-foreground">
-              Gestão completa de faturas e recebíveis
+              Gestão de faturas por produto
             </p>
           </div>
 
@@ -248,12 +243,28 @@ export default function Faturamento() {
                 <FileText className="h-8 w-8 text-muted-foreground" />
               </div>
               <h3 className="text-lg font-semibold mb-2">Nenhuma fatura cadastrada</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-md">
-                Importe os dados de faturamento para visualizar as análises e estatísticas.
+              <p className="text-sm text-muted-foreground text-center max-w-md mb-6">
+                Cadastre faturas para acompanhar pagamentos e vencimentos por produto.
               </p>
+              {canManage && (
+                <Button onClick={handleNewFatura}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Cadastrar primeira fatura
+                </Button>
+              )}
             </CardContent>
           </Card>
         </div>
+
+        {isFormOpen && (
+          <FaturaFormModal
+            open={isFormOpen}
+            onOpenChange={setIsFormOpen}
+            fatura={selectedFatura}
+            mode={formMode}
+            onSuccess={handleFormSuccess}
+          />
+        )}
       </AppLayout>
     );
   }
@@ -261,15 +272,16 @@ export default function Faturamento() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Faturamento</h1>
             <p className="mt-1 text-muted-foreground">
-              Gestão completa de faturas e recebíveis
+              Gestão de faturas por produto
             </p>
           </div>
-          <div className="flex gap-3">
-            {!empresaSelecionada && (
+          <div className="flex gap-3 flex-wrap">
+            {isAdminVizio && (
               <Select value={empresaFilter} onValueChange={setEmpresaFilter}>
                 <SelectTrigger className="w-[200px]">
                   <Building2 className="h-4 w-4 mr-2" />
@@ -283,15 +295,27 @@ export default function Faturamento() {
                 </SelectContent>
               </Select>
             )}
-            <Select value={categoriaFilter} onValueChange={setCategoriaFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Categoria" />
+            <Select value={produtoFilter} onValueChange={setProdutoFilter}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Produto" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todas">Todas Categorias</SelectItem>
+                <SelectItem value="todos">Todos Produtos</SelectItem>
                 <SelectItem value="saude">Saúde</SelectItem>
                 <SelectItem value="vida">Vida</SelectItem>
                 <SelectItem value="odonto">Odonto</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos Status</SelectItem>
+                <SelectItem value="aguardando_pagamento">Aguardando</SelectItem>
+                <SelectItem value="pago">Pago</SelectItem>
+                <SelectItem value="atraso">Em Atraso</SelectItem>
+                <SelectItem value="cancelado">Cancelado</SelectItem>
               </SelectContent>
             </Select>
             <Select value={periodoFilter} onValueChange={setPeriodoFilter}>
@@ -304,6 +328,12 @@ export default function Faturamento() {
                 <SelectItem value="24">Últimos 24 meses</SelectItem>
               </SelectContent>
             </Select>
+            {canManage && (
+              <Button onClick={handleNewFatura}>
+                <Plus className="h-4 w-4 mr-2" />
+                Nova Fatura
+              </Button>
+            )}
           </div>
         </div>
 
@@ -312,14 +342,14 @@ export default function Faturamento() {
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center gap-3 mb-4">
-                <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-                  <DollarSign className="h-5 w-5 text-green-500" />
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <DollarSign className="h-5 w-5 text-primary" />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">Total Faturado</p>
+                <p className="text-sm font-medium text-muted-foreground">Total do Período</p>
               </div>
-              <p className="text-3xl font-bold">{formatCurrency(kpis.totalFaturado)}</p>
+              <p className="text-3xl font-bold">{formatCurrency(kpis.totalPeriodo)}</p>
               <p className="text-sm text-muted-foreground mt-2">
-                {kpis.faturaspagas} faturas pagas
+                {filteredData.length} faturas
               </p>
             </CardContent>
           </Card>
@@ -330,11 +360,11 @@ export default function Faturamento() {
                 <div className="h-10 w-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
                   <Clock className="h-5 w-5 text-yellow-500" />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">A Receber</p>
+                <p className="text-sm font-medium text-muted-foreground">Em Aberto</p>
               </div>
-              <p className="text-3xl font-bold">{formatCurrency(kpis.totalPendente)}</p>
+              <p className="text-3xl font-bold">{formatCurrency(kpis.totalAberto)}</p>
               <p className="text-sm text-muted-foreground mt-2">
-                {kpis.faturasPendentes} faturas pendentes
+                {filteredData.filter(f => f.status === "aguardando_pagamento").length} faturas
               </p>
             </CardContent>
           </Card>
@@ -347,9 +377,9 @@ export default function Faturamento() {
                 </div>
                 <p className="text-sm font-medium text-muted-foreground">Em Atraso</p>
               </div>
-              <p className="text-3xl font-bold">{formatCurrency(kpis.totalVencido)}</p>
+              <p className="text-3xl font-bold">{formatCurrency(kpis.totalAtraso)}</p>
               <p className="text-sm text-muted-foreground mt-2">
-                {kpis.faturasVencidas} faturas vencidas
+                {filteredData.filter(f => f.status === "atraso").length} faturas
               </p>
             </CardContent>
           </Card>
@@ -357,209 +387,144 @@ export default function Faturamento() {
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center gap-3 mb-4">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Users className="h-5 w-5 text-primary" />
+                <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                  <CheckCircle className="h-5 w-5 text-green-500" />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">Ticket Médio</p>
+                <p className="text-sm font-medium text-muted-foreground">Total Pago</p>
               </div>
-              <p className="text-3xl font-bold">{formatCurrency(kpis.ticketMedio)}</p>
+              <p className="text-3xl font-bold">{formatCurrency(kpis.totalPago)}</p>
               <p className="text-sm text-muted-foreground mt-2">
-                Por vida/mês
+                {filteredData.filter(f => f.status === "pago").length} faturas
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Charts */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Evolução do Faturamento */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Evolução do Faturamento</CardTitle>
-              <CardDescription>Composição mensal do faturamento</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={350}>
-                <AreaChart data={evolucaoMensal}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="mes" />
-                  <YAxis tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip 
-                    formatter={(value: number, name: string) => {
-                      const labels: Record<string, string> = {
-                        mensalidade: "Mensalidade",
-                        coparticipacao: "Coparticipação",
-                        reembolsos: "Reembolsos",
-                        total: "Total"
-                      };
-                      return [formatCurrency(value), labels[name] || name];
-                    }}
-                  />
-                  <Legend 
-                    formatter={(value) => {
-                      const labels: Record<string, string> = {
-                        mensalidade: "Mensalidade",
-                        coparticipacao: "Coparticipação",
-                        reembolsos: "Reembolsos"
-                      };
-                      return labels[value] || value;
-                    }}
-                  />
-                  <Area type="monotone" dataKey="mensalidade" stackId="1" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.6} />
-                  <Area type="monotone" dataKey="coparticipacao" stackId="1" stroke="hsl(var(--chart-2))" fill="hsl(var(--chart-2))" fillOpacity={0.6} />
-                  <Area type="monotone" dataKey="reembolsos" stackId="1" stroke="hsl(var(--chart-3))" fill="hsl(var(--chart-3))" fillOpacity={0.6} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Evolução de Vidas */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Evolução de Vidas</CardTitle>
-              <CardDescription>Total de beneficiários por mês</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={evolucaoVidas}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="mes" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend 
-                    formatter={(value) => {
-                      const labels: Record<string, string> = {
-                        titulares: "Titulares",
-                        dependentes: "Dependentes"
-                      };
-                      return labels[value] || value;
-                    }}
-                  />
-                  <Bar dataKey="titulares" stackId="a" fill="hsl(var(--primary))" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="dependentes" stackId="a" fill="hsl(var(--chart-4))" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Ticket médio por mês */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Ticket Médio por Vida</CardTitle>
-              <CardDescription>Evolução do custo por beneficiário</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={evolucaoMensal.map((m, i) => ({
-                  mes: m.mes,
-                  ticket: evolucaoVidas[i]?.total > 0 ? m.total / evolucaoVidas[i].total : 0
-                }))}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="mes" />
-                  <YAxis tickFormatter={(v) => `R$ ${v.toFixed(0)}`} />
-                  <Tooltip formatter={(value: number) => [formatCurrency(value), "Ticket Médio"]} />
-                  <Line type="monotone" dataKey="ticket" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 4 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Tabela por Empresa */}
-        {!empresaSelecionada && empresaFilter === "todas" && dadosPorEmpresa.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Faturamento por Empresa</CardTitle>
-              <CardDescription>Resumo consolidado por empresa</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead className="text-right">Faturado</TableHead>
-                    <TableHead className="text-right">Pendente</TableHead>
-                    <TableHead className="text-right">Vencido</TableHead>
-                    <TableHead className="text-right">Vidas</TableHead>
-                    <TableHead className="text-right">Ticket Médio</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {dadosPorEmpresa.map((row, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{row.empresa}</TableCell>
-                      <TableCell className="text-right text-green-600">{formatCurrency(row.faturado)}</TableCell>
-                      <TableCell className="text-right text-yellow-600">{formatCurrency(row.pendente)}</TableCell>
-                      <TableCell className="text-right text-red-600">{formatCurrency(row.vencido)}</TableCell>
-                      <TableCell className="text-right">{row.vidas.toLocaleString('pt-BR')}</TableCell>
-                      <TableCell className="text-right">
-                        {row.vidas > 0 ? formatCurrency((row.faturado + row.pendente) / row.vidas / 12) : '-'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Faturas Recentes */}
+        {/* Faturas Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Faturas Recentes</CardTitle>
-            <CardDescription>Últimas faturas registradas</CardDescription>
+            <CardTitle>Faturas</CardTitle>
+            <CardDescription>Lista de faturas do período selecionado</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Competência</TableHead>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead className="text-right">Valor Total</TableHead>
-                  <TableHead className="text-right">Vidas</TableHead>
+                  <TableHead>Produto</TableHead>
                   <TableHead>Vencimento</TableHead>
+                  <TableHead className="text-right">Valor Total</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {faturasRecentes.map((fatura) => {
-                  const config = statusConfig[fatura.status] || statusConfig.pendente;
-                  const StatusIcon = config.icon;
-                  
-                  return (
-                    <TableRow key={fatura.id}>
-                      <TableCell className="font-medium">
-                        {format(new Date(fatura.competencia), "MMM/yyyy", { locale: ptBR })}
-                      </TableCell>
-                      <TableCell>{fatura.empresaNome}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{categoriaLabels[fatura.categoria] || fatura.categoria}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(Number(fatura.valor_total))}
-                      </TableCell>
-                      <TableCell className="text-right">{fatura.total_vidas.toLocaleString('pt-BR')}</TableCell>
-                      <TableCell>
-                        {fatura.data_vencimento 
-                          ? format(new Date(fatura.data_vencimento), "dd/MM/yyyy")
-                          : '-'
-                        }
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={config.color}>
-                          <StatusIcon className="h-3.5 w-3.5 mr-1.5" />
-                          {config.label}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {filteredData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      Nenhuma fatura encontrada com os filtros selecionados.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredData.map((fatura) => {
+                    const statusInfo = statusConfig[fatura.status];
+                    const produtoInfo = produtoConfig[fatura.produto];
+                    const StatusIcon = statusInfo?.icon || Clock;
+                    const ProdutoIcon = produtoInfo?.icon || Heart;
+
+                    return (
+                      <TableRow key={fatura.id}>
+                        <TableCell className="font-medium">
+                          {format(new Date(fatura.competencia), "MMM/yyyy", { locale: ptBR })}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={`${produtoInfo?.color} flex items-center gap-1 w-fit`}>
+                            <ProdutoIcon className="h-3 w-3" />
+                            {produtoInfo?.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {format(new Date(fatura.vencimento), "dd/MM/yyyy")}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {formatCurrency(Number(fatura.valor_total))}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={`${statusInfo?.color} flex items-center gap-1 w-fit`}>
+                            <StatusIcon className="h-3 w-3" />
+                            {statusInfo?.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleViewFatura(fatura)}
+                              title="Ver detalhes"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {canManage && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEditFatura(fatura)}
+                                  title="Editar"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteFatura(fatura)}
+                                  title="Excluir"
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
       </div>
+
+      {/* Modals */}
+      {isFormOpen && (
+        <FaturaFormModal
+          open={isFormOpen}
+          onOpenChange={setIsFormOpen}
+          fatura={selectedFatura}
+          mode={formMode}
+          onSuccess={handleFormSuccess}
+        />
+      )}
+
+      {isDetailOpen && selectedFatura && (
+        <FaturaDetailModal
+          open={isDetailOpen}
+          onOpenChange={setIsDetailOpen}
+          fatura={selectedFatura}
+        />
+      )}
+
+      {isDeleteOpen && selectedFatura && (
+        <DeleteFaturaModal
+          open={isDeleteOpen}
+          onOpenChange={setIsDeleteOpen}
+          fatura={selectedFatura}
+          onSuccess={handleDeleteSuccess}
+        />
+      )}
     </AppLayout>
   );
 }

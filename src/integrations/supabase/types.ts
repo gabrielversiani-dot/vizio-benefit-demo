@@ -601,6 +601,203 @@ export type Database = {
           },
         ]
       }
+      faturamento_documentos: {
+        Row: {
+          created_at: string
+          faturamento_id: string
+          filename: string
+          id: string
+          mime_type: string
+          storage_path: string
+          tamanho_bytes: number
+          tipo: Database["public"]["Enums"]["faturamento_documento_tipo"]
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          faturamento_id: string
+          filename: string
+          id?: string
+          mime_type: string
+          storage_path: string
+          tamanho_bytes: number
+          tipo: Database["public"]["Enums"]["faturamento_documento_tipo"]
+          uploaded_by: string
+        }
+        Update: {
+          created_at?: string
+          faturamento_id?: string
+          filename?: string
+          id?: string
+          mime_type?: string
+          storage_path?: string
+          tamanho_bytes?: number
+          tipo?: Database["public"]["Enums"]["faturamento_documento_tipo"]
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faturamento_documentos_faturamento_id_fkey"
+            columns: ["faturamento_id"]
+            isOneToOne: false
+            referencedRelation: "faturamentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "faturamento_documentos_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      faturamento_entidades: {
+        Row: {
+          ativo: boolean
+          cnpj: string | null
+          created_at: string
+          empresa_id: string
+          id: string
+          nome: string
+          tipo: Database["public"]["Enums"]["faturamento_entidade_tipo"]
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          cnpj?: string | null
+          created_at?: string
+          empresa_id: string
+          id?: string
+          nome: string
+          tipo: Database["public"]["Enums"]["faturamento_entidade_tipo"]
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          cnpj?: string | null
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          nome?: string
+          tipo?: Database["public"]["Enums"]["faturamento_entidade_tipo"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faturamento_entidades_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      faturamento_subfaturas: {
+        Row: {
+          created_at: string
+          descricao: string | null
+          entidade_id: string | null
+          faturamento_id: string
+          id: string
+          updated_at: string
+          valor: number
+        }
+        Insert: {
+          created_at?: string
+          descricao?: string | null
+          entidade_id?: string | null
+          faturamento_id: string
+          id?: string
+          updated_at?: string
+          valor: number
+        }
+        Update: {
+          created_at?: string
+          descricao?: string | null
+          entidade_id?: string | null
+          faturamento_id?: string
+          id?: string
+          updated_at?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faturamento_subfaturas_entidade_id_fkey"
+            columns: ["entidade_id"]
+            isOneToOne: false
+            referencedRelation: "faturamento_entidades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "faturamento_subfaturas_faturamento_id_fkey"
+            columns: ["faturamento_id"]
+            isOneToOne: false
+            referencedRelation: "faturamentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      faturamentos: {
+        Row: {
+          competencia: string
+          created_at: string
+          criado_por: string
+          empresa_id: string
+          id: string
+          observacao: string | null
+          pago_em: string | null
+          produto: Database["public"]["Enums"]["faturamento_produto"]
+          status: Database["public"]["Enums"]["faturamento_status"]
+          updated_at: string
+          valor_total: number
+          vencimento: string
+        }
+        Insert: {
+          competencia: string
+          created_at?: string
+          criado_por: string
+          empresa_id: string
+          id?: string
+          observacao?: string | null
+          pago_em?: string | null
+          produto: Database["public"]["Enums"]["faturamento_produto"]
+          status?: Database["public"]["Enums"]["faturamento_status"]
+          updated_at?: string
+          valor_total: number
+          vencimento: string
+        }
+        Update: {
+          competencia?: string
+          created_at?: string
+          criado_por?: string
+          empresa_id?: string
+          id?: string
+          observacao?: string | null
+          pago_em?: string | null
+          produto?: Database["public"]["Enums"]["faturamento_produto"]
+          status?: Database["public"]["Enums"]["faturamento_status"]
+          updated_at?: string
+          valor_total?: number
+          vencimento?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faturamentos_criado_por_fkey"
+            columns: ["criado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "faturamentos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       import_job_rows: {
         Row: {
           created_at: string
@@ -1296,6 +1493,14 @@ export type Database = {
         | "prevencao"
         | "outro"
       categoria_beneficio: "saude" | "vida" | "odonto"
+      faturamento_documento_tipo: "boleto" | "nf" | "demonstrativo" | "outro"
+      faturamento_entidade_tipo: "coligada" | "subestipulante"
+      faturamento_produto: "saude" | "vida" | "odonto"
+      faturamento_status:
+        | "aguardando_pagamento"
+        | "pago"
+        | "atraso"
+        | "cancelado"
       grau_parentesco: "conjuge" | "filho" | "pai" | "mae" | "outro"
       import_data_type:
         | "beneficiarios"
@@ -1488,6 +1693,15 @@ export const Constants = {
         "outro",
       ],
       categoria_beneficio: ["saude", "vida", "odonto"],
+      faturamento_documento_tipo: ["boleto", "nf", "demonstrativo", "outro"],
+      faturamento_entidade_tipo: ["coligada", "subestipulante"],
+      faturamento_produto: ["saude", "vida", "odonto"],
+      faturamento_status: [
+        "aguardando_pagamento",
+        "pago",
+        "atraso",
+        "cancelado",
+      ],
       grau_parentesco: ["conjuge", "filho", "pai", "mae", "outro"],
       import_data_type: [
         "beneficiarios",

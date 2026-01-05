@@ -10,7 +10,11 @@ import { UsuariosStep } from "./steps/UsuariosStep";
 import { PerfisStep } from "./steps/PerfisStep";
 import { RolesStep } from "./steps/RolesStep";
 import { SetupSummary } from "./SetupSummary";
+import { DiagnosticPanel } from "./DiagnosticPanel";
 import { useSetupDraft } from "@/hooks/useSetupDraft";
+import { useDiagnostic } from "@/hooks/useDiagnostic";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface StepStatus {
@@ -27,6 +31,8 @@ const steps = [
   { id: 'roles', label: 'Funções', icon: Shield, description: 'Atribuir permissões' },
 ];
 
+type StepId = 'empresas' | 'usuarios' | 'perfis' | 'roles';
+
 export function SetupWizard() {
   const [currentStep, setCurrentStep] = useState(0);
   const [stepStatus, setStepStatus] = useState<StepStatus>({
@@ -36,7 +42,27 @@ export function SetupWizard() {
     roles: { created: 0, errors: 0 },
   });
   const [showSummary, setShowSummary] = useState(false);
+  const [isAdminVizio, setIsAdminVizio] = useState(false);
   const { hasDraft, clearDraft, draft } = useSetupDraft();
+  const { logs, isRunning, clearLogs, runTestsForStep } = useDiagnostic();
+  const { user } = useAuth();
+
+  // Check if user is admin_vizio for diagnostic mode
+  useEffect(() => {
+    const checkAdminRole = async () => {
+      if (!user) return;
+      
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin_vizio');
+      
+      setIsAdminVizio((data?.length ?? 0) > 0);
+    };
+    
+    checkAdminRole();
+  }, [user]);
 
   const progress = ((currentStep + 1) / steps.length) * 100;
 
@@ -202,6 +228,17 @@ export function SetupWizard() {
           {renderCurrentStep()}
         </CardContent>
       </Card>
+
+      {/* Diagnostic Panel - Only for admin_vizio */}
+      {isAdminVizio && (
+        <DiagnosticPanel
+          logs={logs}
+          isRunning={isRunning}
+          currentStep={steps[currentStep].id}
+          onRunTests={() => runTestsForStep(steps[currentStep].id as StepId)}
+          onClearLogs={clearLogs}
+        />
+      )}
 
       {/* Navigation */}
       <div className="flex justify-between">

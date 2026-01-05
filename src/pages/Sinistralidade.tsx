@@ -108,8 +108,8 @@ export default function Sinistralidade() {
     queryFn: async () => {
       const mesesAtras = new Date();
       mesesAtras.setMonth(mesesAtras.getMonth() - parseInt(periodoFilter));
-      // Formato YYYY-MM para comparar com coluna competencia
-      const competenciaMinima = `${mesesAtras.getFullYear()}-${String(mesesAtras.getMonth() + 1).padStart(2, '0')}`;
+      // Formato YYYY-MM-01 para comparar com coluna competencia (tipo DATE)
+      const competenciaMinima = `${mesesAtras.getFullYear()}-${String(mesesAtras.getMonth() + 1).padStart(2, '0')}-01`;
       
       let query = supabase
         .from("sinistralidade")
@@ -133,26 +133,30 @@ export default function Sinistralidade() {
     queryFn: async () => {
       if (!resumo.periodo_inicio || !resumo.periodo_fim) return [];
       
-      // Converter para YYYY-MM (a coluna competencia está nesse formato)
-      const inicioYM = resumo.periodo_inicio.slice(0, 7); // "YYYY-MM"
-      const fimYM = resumo.periodo_fim.slice(0, 7); // "YYYY-MM"
+      // A coluna competencia é do tipo DATE (YYYY-MM-DD), não texto
+      // Converter para formato completo de data
+      const inicioDate = resumo.periodo_inicio.slice(0, 7) + "-01"; // "YYYY-MM-01"
+      const fimDate = resumo.periodo_fim.slice(0, 7) + "-01"; // "YYYY-MM-01"
       
       if (import.meta.env.DEV) {
-        console.log("[sinistralidade-pdf-query] inicioYM:", inicioYM, "fimYM:", fimYM);
+        console.log("[sinistralidade-pdf-query] inicioDate:", inicioDate, "fimDate:", fimDate);
+        console.log("[sinistralidade-pdf-query] empresaId:", empresaSelecionada);
+        console.log("[sinistralidade-pdf-query] import_job_id:", resumo.import_job_id);
       }
       
       let query = supabase
         .from("sinistralidade")
         .select("*")
-        .gte("competencia", inicioYM)
-        .lte("competencia", fimYM)
+        .gte("competencia", inicioDate)
+        .lte("competencia", fimDate)
         .order("competencia", { ascending: true });
       
       if (empresaSelecionada) {
         query = query.eq("empresa_id", empresaSelecionada);
       }
       
-      // Se tiver import_job_id, priorizar registros desse job
+      // IMPORTANTE: Só aplicar filtro import_job_id se ele existir e não for null
+      // Nunca fazer .eq("import_job_id", null) pois isso zera o resultado
       if (resumo.import_job_id) {
         query = query.eq("import_job_id", resumo.import_job_id);
       }
@@ -179,15 +183,25 @@ export default function Sinistralidade() {
   // Selecionar dados do gráfico baseado no modo (PDF ou calculado)
   const dadosGrafico = useMemo(() => {
     if (kpiSource === "pdf_importado" && sinistralidade_pdf.length > 0) {
+      if (import.meta.env.DEV) {
+        console.log("[dadosGrafico] Usando sinistralidade_pdf, count:", sinistralidade_pdf.length);
+        console.log("[dadosGrafico] Primeiras 3 competências:", sinistralidade_pdf.slice(0, 3).map(s => s.competencia));
+      }
       return sinistralidade_pdf;
+    }
+    if (import.meta.env.DEV) {
+      console.log("[dadosGrafico] Usando sinistralidade calculado, count:", sinistralidade.length);
     }
     return sinistralidade;
   }, [kpiSource, sinistralidade_pdf, sinistralidade]);
 
   // Filter by empresa
   const filteredData = useMemo(() => {
-    if (empresaFilter === "todas") return dadosGrafico;
-    return dadosGrafico.filter(s => s.empresa_id === empresaFilter);
+    const result = empresaFilter === "todas" ? dadosGrafico : dadosGrafico.filter(s => s.empresa_id === empresaFilter);
+    if (import.meta.env.DEV) {
+      console.log("[filteredData] count:", result.length, "empresaFilter:", empresaFilter);
+    }
+    return result;
   }, [dadosGrafico, empresaFilter]);
 
   // KPIs

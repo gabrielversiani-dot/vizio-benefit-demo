@@ -930,6 +930,78 @@ export type Database = {
           },
         ]
       }
+      sinistralidade_documentos: {
+        Row: {
+          ai_summary: string | null
+          competencias: string[] | null
+          created_at: string
+          empresa_id: string
+          file_name: string
+          file_path: string
+          file_size: number | null
+          id: string
+          import_job_id: string | null
+          operadora: string
+          periodo_fim: string | null
+          periodo_inicio: string | null
+          status: string
+          tipo_relatorio: string | null
+          updated_at: string
+          uploaded_by: string
+        }
+        Insert: {
+          ai_summary?: string | null
+          competencias?: string[] | null
+          created_at?: string
+          empresa_id: string
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          id?: string
+          import_job_id?: string | null
+          operadora?: string
+          periodo_fim?: string | null
+          periodo_inicio?: string | null
+          status?: string
+          tipo_relatorio?: string | null
+          updated_at?: string
+          uploaded_by: string
+        }
+        Update: {
+          ai_summary?: string | null
+          competencias?: string[] | null
+          created_at?: string
+          empresa_id?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          id?: string
+          import_job_id?: string | null
+          operadora?: string
+          periodo_fim?: string | null
+          periodo_inicio?: string | null
+          status?: string
+          tipo_relatorio?: string | null
+          updated_at?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sinistralidade_documentos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sinistralidade_documentos_import_job_id_fkey"
+            columns: ["import_job_id"]
+            isOneToOne: false
+            referencedRelation: "import_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sinistralidade_indicadores_periodo: {
         Row: {
           created_at: string

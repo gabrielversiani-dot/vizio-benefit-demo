@@ -16,6 +16,7 @@ import { ImportPDFModal } from "@/components/Sinistralidade/ImportPDFModal";
 import { ImportHistorySection } from "@/components/Sinistralidade/ImportHistorySection";
 import { IndicadoresPeriodoSection } from "@/components/Sinistralidade/IndicadoresPeriodoSection";
 import { PDFImportChecklist } from "@/components/Sinistralidade/PDFImportChecklist";
+import { SinistroDocsSection } from "@/components/Sinistralidade/SinistroDocsSection";
 import { useAuth } from "@/hooks/useAuth";
 
 type Sinistralidade = {
@@ -57,21 +58,23 @@ export default function Sinistralidade() {
   const [periodoFilter, setPeriodoFilter] = useState<string>("12");
   const [importModalOpen, setImportModalOpen] = useState(false);
 
-  // Check if user is admin_vizio
-  const { data: isAdminVizio = false } = useQuery({
-    queryKey: ["is-admin-vizio", user?.id],
+  // Check user roles
+  const { data: userRoles = [] } = useQuery({
+    queryKey: ["user-roles", user?.id],
     queryFn: async () => {
-      if (!user?.id) return false;
+      if (!user?.id) return [];
       const { data } = await supabase
         .from("user_roles")
         .select("role")
-        .eq("user_id", user.id)
-        .eq("role", "admin_vizio")
-        .maybeSingle();
-      return !!data;
+        .eq("user_id", user.id);
+      return data?.map(r => r.role) || [];
     },
     enabled: !!user?.id
   });
+
+  const isAdminVizio = userRoles.includes('admin_vizio');
+  const isAdminEmpresa = userRoles.includes('admin_empresa');
+  const canEdit = isAdminVizio || isAdminEmpresa;
 
   // Fetch empresas
   const { data: empresas = [] } = useQuery({
@@ -268,25 +271,61 @@ export default function Sinistralidade() {
     return (
       <AppLayout>
         <div className="space-y-8">
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight">Sinistralidade</h1>
-            <p className="mt-2 text-muted-foreground">
-              Análise detalhada de sinistros e utilização de benefícios
-            </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold tracking-tight">Sinistralidade</h1>
+              <p className="mt-2 text-muted-foreground">
+                Análise detalhada de sinistros e utilização de benefícios
+              </p>
+            </div>
+            {canEdit && (
+              <Button onClick={() => setImportModalOpen(true)} size="lg">
+                <Upload className="h-5 w-5 mr-2" />
+                Importar PDF (Unimed BH)
+              </Button>
+            )}
           </div>
 
-          <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-16">
-              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                <FileText className="h-8 w-8 text-muted-foreground" />
+          {/* Import CTA Card */}
+          <Card className="border-primary/50 bg-primary/5">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                <Upload className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">Nenhum dado de sinistralidade</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-md">
-                Importe os dados de sinistros para visualizar as análises e estatísticas.
+              <h3 className="text-lg font-semibold mb-2">Importe seus dados de sinistralidade</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
+                Envie o PDF da Unimed BH para extrair automaticamente os dados de sinistralidade com inteligência artificial.
               </p>
+              {canEdit && (
+                <Button onClick={() => setImportModalOpen(true)}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Importar PDF (Unimed BH)
+                </Button>
+              )}
             </CardContent>
           </Card>
+
+          {/* Documentos Section - sempre visível */}
+          <SinistroDocsSection 
+            empresaId={empresaSelecionada} 
+            onImportClick={() => setImportModalOpen(true)}
+            canEdit={canEdit}
+          />
+
+          {/* Checklist de Teste (somente admin_vizio) */}
+          <PDFImportChecklist visible={isAdminVizio} />
         </div>
+
+        <ImportPDFModal
+          open={importModalOpen}
+          onOpenChange={setImportModalOpen}
+          onImportComplete={() => {
+            queryClient.invalidateQueries({ queryKey: ["sinistralidade"] });
+            queryClient.invalidateQueries({ queryKey: ["sinistralidade-documentos"] });
+            queryClient.invalidateQueries({ queryKey: ["import-jobs-sinistralidade"] });
+            queryClient.invalidateQueries({ queryKey: ["indicadores-periodo"] });
+          }}
+        />
       </AppLayout>
     );
   }
@@ -302,10 +341,12 @@ export default function Sinistralidade() {
             </p>
           </div>
           <div className="flex gap-3">
-            <Button onClick={() => setImportModalOpen(true)} variant="outline">
-              <Upload className="h-4 w-4 mr-2" />
-              Importar PDF (Unimed)
-            </Button>
+            {canEdit && (
+              <Button onClick={() => setImportModalOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Importar PDF (Unimed BH)
+              </Button>
+            )}
             {!empresaSelecionada && (
               <Select value={empresaFilter} onValueChange={setEmpresaFilter}>
                 <SelectTrigger className="w-[200px]">
@@ -593,6 +634,13 @@ export default function Sinistralidade() {
           </CardContent>
         </Card>
 
+        {/* Documentos de Sinistralidade (Unimed BH) */}
+        <SinistroDocsSection 
+          empresaId={empresaSelecionada} 
+          onImportClick={() => setImportModalOpen(true)}
+          canEdit={canEdit}
+        />
+
         {/* Indicadores de Período */}
         <IndicadoresPeriodoSection empresaId={empresaSelecionada || undefined} />
 
@@ -608,6 +656,7 @@ export default function Sinistralidade() {
         onOpenChange={setImportModalOpen}
         onImportComplete={() => {
           queryClient.invalidateQueries({ queryKey: ["sinistralidade"] });
+          queryClient.invalidateQueries({ queryKey: ["sinistralidade-documentos"] });
           queryClient.invalidateQueries({ queryKey: ["import-jobs-sinistralidade"] });
           queryClient.invalidateQueries({ queryKey: ["indicadores-periodo"] });
         }}

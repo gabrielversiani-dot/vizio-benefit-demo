@@ -19,6 +19,7 @@ import { DeleteFaturaModal } from "@/components/Faturamento/DeleteFaturaModal";
 type FaturamentoRow = {
   id: string;
   empresa_id: string;
+  filial_id: string | null;
   produto: "saude" | "vida" | "odonto";
   competencia: string;
   vencimento: string;
@@ -30,6 +31,7 @@ type FaturamentoRow = {
   created_at: string;
   updated_at: string;
   empresas?: { nome: string } | null;
+  filial?: { nome: string } | null;
 };
 
 type Empresa = {
@@ -101,7 +103,7 @@ export default function Faturamento() {
     enabled: isAdminVizio,
   });
 
-  // Fetch faturamentos with empresa name
+  // Fetch faturamentos with empresa and filial name
   const { data: faturamentos = [], isLoading } = useQuery({
     queryKey: ["faturamentos", empresaSelecionada, periodoFilter],
     queryFn: async () => {
@@ -110,7 +112,7 @@ export default function Faturamento() {
       
       let query = supabase
         .from("faturamentos")
-        .select("*, empresas(nome)")
+        .select("*, empresas(nome), filial:faturamento_entidades(nome)")
         .gte("competencia", mesesAtras.toISOString().split('T')[0])
         .order("competencia", { ascending: false })
         .order("vencimento", { ascending: false });
@@ -434,14 +436,22 @@ export default function Faturamento() {
                     const StatusIcon = statusInfo?.icon || Clock;
                     const ProdutoIcon = produtoInfo?.icon || Heart;
                     const empresaNome = fatura.empresas?.nome || "—";
+                    const filialNome = fatura.filial?.nome;
 
                     return (
                       <TableRow key={fatura.id}>
                         <TableCell className="hidden md:table-cell text-muted-foreground">
-                          {empresaNome}
+                          <div>
+                            {empresaNome}
+                            {filialNome && (
+                              <span className="block text-xs">Filial: {filialNome}</span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="font-medium">
-                          <span className="md:hidden text-muted-foreground text-xs block">{empresaNome}</span>
+                          <span className="md:hidden text-muted-foreground text-xs block">
+                            {empresaNome}{filialNome && ` • ${filialNome}`}
+                          </span>
                           {format(new Date(fatura.competencia), "MMM/yyyy", { locale: ptBR })}
                         </TableCell>
                         <TableCell>

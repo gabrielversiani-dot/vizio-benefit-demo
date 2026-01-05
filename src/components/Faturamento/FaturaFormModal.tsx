@@ -55,6 +55,7 @@ export function FaturaFormModal({ open, onOpenChange, fatura, mode, onSuccess }:
   
   // Form state
   const [empresaId, setEmpresaId] = useState(empresaSelecionada || "");
+  const [filialId, setFilialId] = useState<string | null>(null);
   const [produto, setProduto] = useState<"saude" | "vida" | "odonto">("saude");
   const [competencia, setCompetencia] = useState("");
   const [vencimento, setVencimento] = useState("");
@@ -72,6 +73,13 @@ export function FaturaFormModal({ open, onOpenChange, fatura, mode, onSuccess }:
   const [documentoTipo, setDocumentoTipo] = useState<"boleto" | "nf" | "demonstrativo" | "outro">("boleto");
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Reset filial when empresa changes
+  useEffect(() => {
+    if (mode === "create") {
+      setFilialId(null);
+    }
+  }, [empresaId, mode]);
 
   // Fetch entidades for subfaturas
   const { data: entidades = [] } = useQuery({
@@ -126,6 +134,7 @@ export function FaturaFormModal({ open, onOpenChange, fatura, mode, onSuccess }:
   useEffect(() => {
     if (mode === "edit" && fatura) {
       setEmpresaId(fatura.empresa_id);
+      setFilialId(fatura.filial_id || null);
       setProduto(fatura.produto);
       setCompetencia(fatura.competencia);
       setVencimento(fatura.vencimento);
@@ -136,6 +145,7 @@ export function FaturaFormModal({ open, onOpenChange, fatura, mode, onSuccess }:
     } else {
       // Reset form for create
       setEmpresaId(empresaSelecionada || "");
+      setFilialId(null);
       setProduto("saude");
       setCompetencia("");
       setVencimento("");
@@ -254,6 +264,7 @@ export function FaturaFormModal({ open, onOpenChange, fatura, mode, onSuccess }:
           .from("faturamentos")
           .insert({
             empresa_id: empresaId,
+            filial_id: filialId || null,
             produto,
             competencia: `${competencia}-01`, // Store as first day of month
             vencimento,
@@ -273,6 +284,7 @@ export function FaturaFormModal({ open, onOpenChange, fatura, mode, onSuccess }:
         const { error } = await supabase
           .from("faturamentos")
           .update({
+            filial_id: filialId || null,
             produto,
             competencia: `${competencia}-01`,
             vencimento,
@@ -396,6 +408,36 @@ export function FaturaFormModal({ open, onOpenChange, fatura, mode, onSuccess }:
                 </Select>
               </div>
             )}
+
+            {/* Filial selector (optional) */}
+            <div className="space-y-2">
+              <Label>Filial (opcional)</Label>
+              <Select 
+                value={filialId || "none"} 
+                onValueChange={(v) => setFilialId(v === "none" ? null : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma filial (opcional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhuma filial</SelectItem>
+                  {entidades.length > 0 ? (
+                    entidades.map(e => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.nome} ({e.tipo === "coligada" ? "Coligada" : "Subestipulante"})
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="none" disabled>Nenhuma filial cadastrada</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              {entidades.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Nenhuma filial cadastrada para esta empresa.
+                </p>
+              )}
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

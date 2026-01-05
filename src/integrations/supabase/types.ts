@@ -744,6 +744,7 @@ export type Database = {
           created_at: string
           criado_por: string
           empresa_id: string
+          filial_id: string | null
           id: string
           observacao: string | null
           pago_em: string | null
@@ -758,6 +759,7 @@ export type Database = {
           created_at?: string
           criado_por: string
           empresa_id: string
+          filial_id?: string | null
           id?: string
           observacao?: string | null
           pago_em?: string | null
@@ -772,6 +774,7 @@ export type Database = {
           created_at?: string
           criado_por?: string
           empresa_id?: string
+          filial_id?: string | null
           id?: string
           observacao?: string | null
           pago_em?: string | null
@@ -794,6 +797,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "faturamentos_filial_id_fkey"
+            columns: ["filial_id"]
+            isOneToOne: false
+            referencedRelation: "faturamento_entidades"
             referencedColumns: ["id"]
           },
         ]

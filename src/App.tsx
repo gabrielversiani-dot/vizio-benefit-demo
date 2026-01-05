@@ -17,7 +17,8 @@ import MovimentacaoVidas from "./pages/MovimentacaoVidas";
 import Demandas from "./pages/Demandas";
 import PromocaoSaude from "./pages/PromocaoSaude";
 import Configuracoes from "./pages/Configuracoes";
-import CentralImportacao from "./pages/CentralImportacao";
+import ImportacaoIndex from "./pages/admin/ImportacaoIndex";
+import ImportacaoJobPreview from "./pages/admin/ImportacaoJobPreview";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -122,10 +123,18 @@ const App = () => (
                 }
               />
               <Route
-                path="/central-importacao"
+                path="/admin/importacao"
                 element={
                   <ProtectedRoute>
-                    <CentralImportacao />
+                    <ImportacaoIndex />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/importacao/jobs/:jobId"
+                element={
+                  <ProtectedRoute>
+                    <ImportacaoJobPreview />
                   </ProtectedRoute>
                 }
               />

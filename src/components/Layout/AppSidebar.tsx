@@ -18,7 +18,7 @@ const menuItems = [
   { icon: FileSignature, label: "Contratos", href: "/contratos" },
   { icon: Users, label: "Beneficiários", href: "/beneficiarios" },
   { icon: RefreshCw, label: "Movimentação de Vidas", href: "/movimentacao-vidas" },
-  { icon: Bot, label: "Central de Importação", href: "/central-importacao" },
+  { icon: Bot, label: "Central de Importação", href: "/admin/importacao" },
   { icon: ClipboardList, label: "Demandas", href: "/demandas" },
   { icon: Heart, label: "Promoção de Saúde", href: "/promocao-saude" },
   { icon: FileText, label: "Relatórios", href: "/relatorios" },

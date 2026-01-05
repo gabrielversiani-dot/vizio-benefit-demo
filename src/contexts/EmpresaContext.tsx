@@ -9,6 +9,8 @@ interface Empresa {
   is_demo: boolean;
 }
 
+type AppRole = 'admin_vizio' | 'admin_empresa' | 'rh_gestor' | 'visualizador';
+
 interface EmpresaContextType {
   empresaSelecionada: string | null;
   setEmpresaSelecionada: (id: string | null) => void;
@@ -16,6 +18,7 @@ interface EmpresaContextType {
   loading: boolean;
   isAdminVizio: boolean;
   userEmpresaId: string | null;
+  userRole: AppRole | null;
 }
 
 const EmpresaContext = createContext<EmpresaContextType | undefined>(undefined);
@@ -27,6 +30,7 @@ export function EmpresaProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isAdminVizio, setIsAdminVizio] = useState(false);
   const [userEmpresaId, setUserEmpresaId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<AppRole | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -45,6 +49,11 @@ export function EmpresaProvider({ children }: { children: ReactNode }) {
         const roles = rolesData?.map(r => r.role) || [];
         const isVizioAdmin = roles.includes('admin_vizio');
         setIsAdminVizio(isVizioAdmin);
+        
+        // Set the primary role (priority: admin_vizio > admin_empresa > rh_gestor > visualizador)
+        const rolePriority: AppRole[] = ['admin_vizio', 'admin_empresa', 'rh_gestor', 'visualizador'];
+        const primaryRole = rolePriority.find(r => roles.includes(r)) || null;
+        setUserRole(primaryRole);
 
         // Buscar empresa do usuário
         const { data: profileData } = await supabase
@@ -95,6 +104,7 @@ export function EmpresaProvider({ children }: { children: ReactNode }) {
         loading,
         isAdminVizio,
         userEmpresaId,
+        userRole,
       }}
     >
       {children}

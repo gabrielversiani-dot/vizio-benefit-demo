@@ -1016,6 +1016,7 @@ export type Database = {
           fonte_pdf_path: string | null
           id: string
           import_job_id: string | null
+          media_periodo: number | null
           metricas: Json | null
           operadora: string | null
           periodo_fim: string
@@ -1032,6 +1033,7 @@ export type Database = {
           fonte_pdf_path?: string | null
           id?: string
           import_job_id?: string | null
+          media_periodo?: number | null
           metricas?: Json | null
           operadora?: string | null
           periodo_fim: string
@@ -1048,6 +1050,7 @@ export type Database = {
           fonte_pdf_path?: string | null
           id?: string
           import_job_id?: string | null
+          media_periodo?: number | null
           metricas?: Json | null
           operadora?: string | null
           periodo_fim?: string

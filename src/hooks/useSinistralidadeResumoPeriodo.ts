@@ -66,8 +66,8 @@ export function useSinistralidadeResumoPeriodo(
 
       const mesesAtras = new Date();
       mesesAtras.setMonth(mesesAtras.getMonth() - 12);
-      // Formato YYYY-MM para comparar com coluna competencia
-      const competenciaMinima = `${mesesAtras.getFullYear()}-${String(mesesAtras.getMonth() + 1).padStart(2, '0')}`;
+      // Formato YYYY-MM-01 para comparar com coluna competencia (tipo DATE)
+      const competenciaMinima = `${mesesAtras.getFullYear()}-${String(mesesAtras.getMonth() + 1).padStart(2, '0')}-01`;
 
       const { data, error } = await supabase
         .from("sinistralidade")

@@ -129,65 +129,85 @@ export default function Sinistralidade() {
 
   // Fetch sinistralidade do período do PDF importado (quando kpiSource === "pdf_importado")
   const { data: sinistralidade_pdf = [] } = useQuery({
-    queryKey: ["sinistralidade-pdf-periodo", empresaSelecionada, resumo.indicador_id, resumo.periodo_inicio, resumo.periodo_fim, resumo.import_job_id],
+    queryKey: [
+      "sinistralidade-pdf-periodo",
+      empresaSelecionada,
+      resumo.indicador_id,
+      resumo.periodo_inicio,
+      resumo.periodo_fim,
+      resumo.import_job_id,
+    ],
     queryFn: async () => {
       if (!resumo.periodo_inicio || !resumo.periodo_fim) return [];
-      
+
+      const inicioYM = resumo.periodo_inicio.slice(0, 7); // "YYYY-MM"
+      const fimYM = resumo.periodo_fim.slice(0, 7); // "YYYY-MM"
+
       // A coluna competencia é do tipo DATE (YYYY-MM-DD)
-      const inicioDate = resumo.periodo_inicio.slice(0, 10); // "YYYY-MM-DD" completo
-      const fimDate = resumo.periodo_fim.slice(0, 10); // "YYYY-MM-DD" completo
-      
+      const inicioDateStr = `${inicioYM}-01`;
+
+      // Último dia do mês do periodo_fim (range seguro)
+      const [anoFim, mesFim] = fimYM.split("-").map(Number);
+      const fimDate = new Date(Date.UTC(anoFim, mesFim, 0)); // mês (1-12), dia 0 => último dia do mês
+      const fimDateStr = fimDate.toISOString().slice(0, 10);
+
       if (import.meta.env.DEV) {
-        console.log("[sinistralidade-pdf-query] inicioDate:", inicioDate, "fimDate:", fimDate);
+        console.log("[sinistralidade-pdf-query] periodo_inicio:", resumo.periodo_inicio, "periodo_fim:", resumo.periodo_fim);
+        console.log("[sinistralidade-pdf-query] inicioYM:", inicioYM, "fimYM:", fimYM);
+        console.log("[sinistralidade-pdf-query] inicioDate:", inicioDateStr, "fimDate:", fimDateStr);
         console.log("[sinistralidade-pdf-query] empresaId:", empresaSelecionada);
         console.log("[sinistralidade-pdf-query] import_job_id do indicador:", resumo.import_job_id);
       }
-      
-      // Primeiro, tentar buscar por import_job_id se existir
-      if (resumo.import_job_id) {
-        const { data: dataByJob, error: errorByJob } = await supabase
+
+      const baseQuery = () =>
+        supabase
           .from("sinistralidade")
           .select("*")
           .eq("empresa_id", empresaSelecionada)
-          .eq("import_job_id", resumo.import_job_id)
+          .gte("competencia", inicioDateStr)
+          .lte("competencia", fimDateStr)
           .order("competencia", { ascending: true });
-        
+
+      // 1) Tentar com import_job_id (somente se existir)
+      if (resumo.import_job_id) {
+        const { data: dataByJob, error: errorByJob } = await baseQuery().eq(
+          "import_job_id",
+          resumo.import_job_id
+        );
+
         if (!errorByJob && dataByJob && dataByJob.length > 0) {
           if (import.meta.env.DEV) {
             console.log("[sinistralidade-pdf-periodo] Encontrados por import_job_id:", dataByJob.length);
-            console.log("[sinistralidade-pdf-periodo] competencias:", dataByJob.map(d => d.competencia));
+            console.log("[sinistralidade-pdf-periodo] competencias:", dataByJob.map((d) => d.competencia));
           }
           return dataByJob as Sinistralidade[];
         }
-        
+
         if (import.meta.env.DEV) {
           console.log("[sinistralidade-pdf-periodo] Nenhum dado por import_job_id, fazendo fallback por período");
         }
       }
-      
-      // Fallback: buscar por empresa + período (sem import_job_id)
-      const { data, error } = await supabase
-        .from("sinistralidade")
-        .select("*")
-        .eq("empresa_id", empresaSelecionada)
-        .gte("competencia", inicioDate)
-        .lte("competencia", fimDate)
-        .order("competencia", { ascending: true });
-      
+
+      // 2) Fallback: buscar por empresa + período (sem import_job_id)
+      const { data, error } = await baseQuery();
+
       if (error) {
         console.error("[sinistralidade-pdf-periodo] Error:", error);
         throw error;
       }
-      
+
       if (import.meta.env.DEV) {
-        console.log("[sinistralidade-pdf-periodo] Fallback por período:", resumo.periodo_inicio, "→", resumo.periodo_fim);
-        console.log("[sinistralidade-pdf-periodo] competencias:", data?.map(d => d.competencia));
+        console.log("[sinistralidade-pdf-periodo] competencias:", data?.map((d) => d.competencia));
         console.log("[sinistralidade-pdf-periodo] count:", data?.length);
       }
-      
-      return data as Sinistralidade[];
+
+      return (data || []) as Sinistralidade[];
     },
-    enabled: !!empresaSelecionada && !!resumo.periodo_inicio && !!resumo.periodo_fim && kpiSource === "pdf_importado",
+    enabled:
+      !!empresaSelecionada &&
+      !!resumo.periodo_inicio &&
+      !!resumo.periodo_fim &&
+      kpiSource === "pdf_importado",
     staleTime: 0,
   });
 
@@ -255,47 +275,60 @@ export default function Sinistralidade() {
       console.log("[evolucaoMensal] filteredData competências raw:", filteredData.map(s => s.competencia));
     }
     
-    // Função para normalizar competência para YYYY-MM
-    const normalizeCompetencia = (value: string): string => {
-      if (!value) return "";
-      const trimmed = value.trim();
-      // Se vier como "YYYY-MM-DD" (10 chars), pegar só YYYY-MM
-      if (trimmed.length >= 10 && trimmed[4] === '-' && trimmed[7] === '-') {
-        return trimmed.slice(0, 7);
-      }
-      // Se vier como "MM/YYYY", converter para YYYY-MM
-      if (trimmed.includes('/') && trimmed.length === 7) {
-        const [mes, ano] = trimmed.split('/');
-        return `${ano}-${mes.padStart(2, '0')}`;
-      }
-      // Se já vier como "YYYY-MM", retornar
-      if (trimmed.length === 7 && trimmed[4] === '-') {
-        return trimmed;
-      }
-      // Fallback: tentar extrair os primeiros 7 chars
-      return trimmed.slice(0, 7);
+    // Função para normalizar competência para YYYY-MM (fonte: coluna DATE do banco)
+    const normalizeCompetencia = (dateStr: string): string => {
+      if (!dateStr) return "";
+      return dateStr.trim().slice(0, 7);
     };
-    
-    // 1. Criar mapa dos dados reais por competência (YYYY-MM)
-    const dataByCompetencia: Record<string, { 
-      premio: number; 
-      sinistros: number; 
-      indice: number; 
-      count: number; 
-      indiceImportado: number | null 
-    }> = {};
-    
-    filteredData.forEach(s => {
-      const comp = normalizeCompetencia(s.competencia);
-      if (!dataByCompetencia[comp]) {
-        dataByCompetencia[comp] = { premio: 0, sinistros: 0, indice: 0, count: 0, indiceImportado: null };
+
+    const parseBRNumber = (value: unknown): number => {
+      if (value == null) return 0;
+      if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+      if (typeof value === "string") {
+        const t = value.trim();
+        if (!t) return 0;
+        const normalized = t.replace(/\./g, "").replace(",", ".");
+        const n = Number(normalized);
+        return Number.isFinite(n) ? n : 0;
       }
-      dataByCompetencia[comp].premio += Number(s.valor_premio);
-      dataByCompetencia[comp].sinistros += Number(s.valor_sinistros);
-      dataByCompetencia[comp].indice += Number(s.indice_sinistralidade || 0);
+      const n = Number(value as any);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    // 1. Criar mapa dos dados reais por competência (YYYY-MM)
+    const dataByCompetencia: Record<
+      string,
+      { premio: number; sinistros: number; indice: number; count: number; indiceImportado: number | null }
+    > = {};
+
+    filteredData.forEach((s) => {
+      const comp = normalizeCompetencia(s.competencia);
+      if (!comp) return;
+
+      if (!dataByCompetencia[comp]) {
+        dataByCompetencia[comp] = {
+          premio: 0,
+          sinistros: 0,
+          indice: 0,
+          count: 0,
+          indiceImportado: null,
+        };
+      }
+
+      const premioMes = parseBRNumber((s as any).valor_premio ?? (s as any).receita_total ?? (s as any).premio ?? 0);
+      const sinistrosMes = parseBRNumber(
+        (s as any).valor_sinistros ?? (s as any).custo_assistencial_total ?? (s as any).sinistros ?? 0
+      );
+      const iuMesRaw = (s as any).indice_sinistralidade ?? (s as any).iu_informado ?? (s as any).iu ?? null;
+      const iuMes = iuMesRaw == null ? null : parseBRNumber(iuMesRaw);
+
+      dataByCompetencia[comp].premio += premioMes;
+      dataByCompetencia[comp].sinistros += sinistrosMes;
+      dataByCompetencia[comp].indice += iuMes ?? 0;
       dataByCompetencia[comp].count += 1;
-      if (s.indice_sinistralidade != null) {
-        dataByCompetencia[comp].indiceImportado = Number(s.indice_sinistralidade);
+
+      if (iuMes != null) {
+        dataByCompetencia[comp].indiceImportado = iuMes;
       }
     });
 
@@ -619,7 +652,7 @@ export default function Sinistralidade() {
               </p>
               <p className="text-xs text-muted-foreground mt-1.5">
                 {kpiSource === "pdf_importado" && hasPdfMedia
-                  ? `Média do Relatório (${resumo.operadora || "PDF"})`
+                  ? "Média do Relatório (Unimed BH)"
                   : "Calculado (mensal)"}
               </p>
             </CardContent>
@@ -641,7 +674,7 @@ export default function Sinistralidade() {
               </p>
               <p className="text-xs text-muted-foreground mt-1.5">
                 {kpiSource === "pdf_importado" && hasPdfMedia && resumo.premio_medio_periodo != null
-                  ? "Receita Total (média do período)"
+                  ? "Média do Relatório (Unimed BH)"
                   : "Média calculada (mensal)"}
               </p>
             </CardContent>
@@ -663,7 +696,7 @@ export default function Sinistralidade() {
               </p>
               <p className="text-xs text-muted-foreground mt-1.5">
                 {kpiSource === "pdf_importado" && hasPdfMedia && resumo.sinistros_medio_periodo != null
-                  ? "Custo Assistencial (média do período)"
+                  ? "Média do Relatório (Unimed BH)"
                   : "Média calculada (mensal)"}
               </p>
             </CardContent>
@@ -687,17 +720,11 @@ export default function Sinistralidade() {
               </p>
               <p className="text-xs text-muted-foreground mt-1.5">
                 {kpiSource === "pdf_importado" && hasPdfMedia && resumo.vidas_ativas_media_periodo != null
-                  ? "Contingente médio do período"
+                  ? "Média do Relatório (Unimed BH)"
                   : resumo.calculated_vidas > 0
                     ? "Média calculada (mensal)"
                     : "Importe um PDF com contingente"}
               </p>
-
-              {isAdminVizio && import.meta.env.DEV && (
-                <p className="mt-2 text-[10px] font-mono text-muted-foreground">
-                  debug vidas_ativas_media_periodo: {String(resumo.vidas_ativas_media_periodo)} | indicador_id: {String(resumo.indicador_id)}
-                </p>
-              )}
             </CardContent>
           </Card>
         </div>
@@ -711,6 +738,11 @@ export default function Sinistralidade() {
               <CardDescription>Comparativo mensal de prêmio vs sinistros</CardDescription>
             </CardHeader>
             <CardContent>
+              {canEdit && import.meta.env.DEV && (
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Linhas mensais carregadas: {filteredData.length}
+                </p>
+              )}
               <ResponsiveContainer width="100%" height={350}>
                 <AreaChart data={evolucaoMensal}>
                   <CartesianGrid strokeDasharray="3 3" />

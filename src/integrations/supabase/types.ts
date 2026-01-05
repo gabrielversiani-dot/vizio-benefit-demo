@@ -139,6 +139,62 @@ export type Database = {
           },
         ]
       }
+      ai_recomendacoes: {
+        Row: {
+          categoria: string
+          created_at: string
+          created_by: string | null
+          descricao: string
+          empresa_id: string
+          evidencias: Json | null
+          id: string
+          periodo_fim: string
+          periodo_inicio: string
+          severidade: string
+          status: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          categoria?: string
+          created_at?: string
+          created_by?: string | null
+          descricao: string
+          empresa_id: string
+          evidencias?: Json | null
+          id?: string
+          periodo_fim: string
+          periodo_inicio: string
+          severidade?: string
+          status?: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          categoria?: string
+          created_at?: string
+          created_by?: string | null
+          descricao?: string
+          empresa_id?: string
+          evidencias?: Json | null
+          id?: string
+          periodo_fim?: string
+          periodo_inicio?: string
+          severidade?: string
+          status?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_recomendacoes_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       beneficiarios: {
         Row: {
           bairro: string | null

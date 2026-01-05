@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -271,6 +271,31 @@ export default function Configuracoes() {
   } | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [loadingRole, setLoadingRole] = useState(true);
+
+  // Fetch current user's role
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        setCurrentUserRole(roleData?.role || null);
+      } catch (error) {
+        console.error('Error fetching role:', error);
+      } finally {
+        setLoadingRole(false);
+      }
+    };
+
+    fetchUserRole();
+  }, [user?.id]);
 
   const handleFileSelect = async (type: string, file: File) => {
     const parsed = await parseCSV(file);
@@ -599,12 +624,32 @@ export default function Configuracoes() {
                   <Shield className="h-5 w-5 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Usuário Admin Atual</p>
-                    <p className="text-xs text-muted-foreground">gabriel.versiani@capitalvizio.com.br</p>
+                    <p className="text-xs text-muted-foreground">{user?.email || 'Carregando...'}</p>
+                    {loadingRole ? (
+                      <p className="text-xs text-muted-foreground italic">Verificando role...</p>
+                    ) : currentUserRole ? (
+                      <Badge 
+                        variant={currentUserRole === 'admin_vizio' ? 'default' : 'secondary'}
+                        className="mt-1"
+                      >
+                        Role: {currentUserRole}
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="mt-1">
+                        Sem role atribuída
+                      </Badge>
+                    )}
                   </div>
                 </div>
-                <Button variant="outline" size="sm">
-                  Atribuir Role Admin
-                </Button>
+                {currentUserRole ? (
+                  <Badge variant="outline" className="bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
+                    ✓ Admin Configurado
+                  </Badge>
+                ) : (
+                  <Button variant="outline" size="sm">
+                    Atribuir Role Admin
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>

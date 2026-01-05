@@ -406,7 +406,7 @@ export default function Sinistralidade() {
       .sort((a, b) => b.sinistros - a.sinistros);
   }, [sinistralidade, empresas]);
 
-  if (isLoading) {
+  if (isLoading || isLoadingResumo) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center h-64">
@@ -416,7 +416,16 @@ export default function Sinistralidade() {
     );
   }
 
-  if (sinistralidade.length === 0) {
+  // Verificar se há dados de qualquer fonte:
+  // 1. Linhas mensais (sinistralidade)
+  // 2. Indicadores de período (resumo do PDF)
+  // 3. Linhas mensais do PDF selecionado
+  const hasLinhasMensais = sinistralidade.length > 0;
+  const hasIndicadorPeriodo = resumo.indicador_id != null;
+  const hasLinhasPdf = sinistralidade_pdf.length > 0;
+  const hasAnyData = hasLinhasMensais || hasIndicadorPeriodo || hasLinhasPdf;
+
+  if (!hasAnyData) {
     return (
       <AppLayout>
         <div className="space-y-8">

@@ -32,7 +32,7 @@ export function useSinistralidadeResumoPeriodo(
 
       const { data, error } = await supabase
         .from("sinistralidade_indicadores_periodo")
-        .select("*")
+        .select("id, empresa_id, periodo_inicio, periodo_fim, operadora, media_periodo, premio_medio_periodo, sinistros_medio_periodo, vidas_ativas_media_periodo, import_job_id")
         .eq("empresa_id", empresaId)
         .not("media_periodo", "is", null)
         .order("periodo_fim", { ascending: false })
@@ -44,6 +44,7 @@ export function useSinistralidadeResumoPeriodo(
         throw error;
       }
 
+      console.log("[useSinistralidadeResumoPeriodo] Fetched indicador:", data);
       return data;
     },
     enabled: !!empresaId,

@@ -19,6 +19,7 @@ import PromocaoSaude from "./pages/PromocaoSaude";
 import Configuracoes from "./pages/Configuracoes";
 import ImportacaoIndex from "./pages/admin/ImportacaoIndex";
 import ImportacaoJobPreview from "./pages/admin/ImportacaoJobPreview";
+import CentralTestes from "./pages/admin/CentralTestes";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -135,6 +136,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <ImportacaoJobPreview />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/testes"
+                element={
+                  <ProtectedRoute>
+                    <CentralTestes />
                   </ProtectedRoute>
                 }
               />

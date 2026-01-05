@@ -3,12 +3,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, Circle, Building2, Users, UserCog, Shield, ChevronRight, ChevronLeft } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CheckCircle2, Building2, Users, UserCog, Shield, ChevronRight, ChevronLeft, Save, Trash2, FileText } from "lucide-react";
 import { EmpresasStep } from "./steps/EmpresasStep";
 import { UsuariosStep } from "./steps/UsuariosStep";
 import { PerfisStep } from "./steps/PerfisStep";
 import { RolesStep } from "./steps/RolesStep";
 import { SetupSummary } from "./SetupSummary";
+import { useSetupDraft } from "@/hooks/useSetupDraft";
+import { toast } from "sonner";
 
 interface StepStatus {
   empresas: { created: number; updated: number; errors: number };
@@ -33,6 +36,7 @@ export function SetupWizard() {
     roles: { created: 0, errors: 0 },
   });
   const [showSummary, setShowSummary] = useState(false);
+  const { hasDraft, clearDraft, draft } = useSetupDraft();
 
   const progress = ((currentStep + 1) / steps.length) * 100;
 
@@ -57,6 +61,13 @@ export function SetupWizard() {
     }
   };
 
+  const handleClearDraft = () => {
+    if (confirm('Tem certeza que deseja limpar todos os rascunhos? Esta ação não pode ser desfeita.')) {
+      clearDraft();
+      toast.success('Rascunhos limpos');
+    }
+  };
+
   const renderCurrentStep = () => {
     switch (steps[currentStep].id) {
       case 'empresas':
@@ -78,6 +89,32 @@ export function SetupWizard() {
 
   return (
     <div className="space-y-6">
+      {/* Draft indicator */}
+      {hasDraft && (
+        <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+          <FileText className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-blue-800 dark:text-blue-200">
+              <strong>Rascunho salvo automaticamente</strong>
+              {draft?.lastModified && (
+                <span className="text-blue-600 dark:text-blue-400 ml-2 text-sm">
+                  (última modificação: {new Date(draft.lastModified).toLocaleString('pt-BR')})
+                </span>
+              )}
+            </span>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={handleClearDraft}
+              className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900"
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Limpar rascunho
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Progress Header */}
       <Card>
         <CardHeader className="pb-4">
@@ -101,6 +138,11 @@ export function SetupWizard() {
               const Icon = step.icon;
               const isCompleted = index < currentStep;
               const isCurrent = index === currentStep;
+              const stepKey = step.id as keyof StepStatus;
+              const status = stepStatus[stepKey];
+              const hasActivity = 'created' in status 
+                ? (status.created > 0 || ('updated' in status && status.updated > 0))
+                : false;
               
               return (
                 <button
@@ -109,7 +151,7 @@ export function SetupWizard() {
                   className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-colors flex-1 ${
                     isCurrent 
                       ? 'bg-primary/10 text-primary' 
-                      : isCompleted 
+                      : isCompleted || hasActivity
                         ? 'text-green-600 dark:text-green-400' 
                         : 'text-muted-foreground hover:bg-muted'
                   }`}
@@ -117,11 +159,11 @@ export function SetupWizard() {
                   <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
                     isCurrent 
                       ? 'bg-primary text-primary-foreground' 
-                      : isCompleted 
+                      : isCompleted || hasActivity
                         ? 'bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400' 
                         : 'bg-muted'
                   }`}>
-                    {isCompleted ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                    {(isCompleted || hasActivity) ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
                   </div>
                   <div className="text-center">
                     <p className="text-sm font-medium">{step.label}</p>
@@ -146,10 +188,14 @@ export function SetupWizard() {
                 </div>
               );
             })()}
-            <div>
+            <div className="flex-1">
               <CardTitle>{steps[currentStep].label}</CardTitle>
               <CardDescription>{steps[currentStep].description}</CardDescription>
             </div>
+            <Badge variant="secondary" className="gap-1">
+              <Save className="h-3 w-3" />
+              Auto-save ativo
+            </Badge>
           </div>
         </CardHeader>
         <CardContent>

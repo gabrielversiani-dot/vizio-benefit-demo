@@ -1,11 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Loader2, Save, AlertTriangle, Info, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Loader2, Info, ShieldAlert, Eye, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { EditableGrid, GridColumn, GridRow } from "../EditableGrid";
+import { PreviewApplyModal, PreviewItem } from "../PreviewApplyModal";
+import { useSetupDraft } from "@/hooks/useSetupDraft";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface UsuariosStepProps {
   onStatusUpdate: (status: { created: number; errors: number }) => void;
@@ -49,29 +53,116 @@ const columns: GridColumn[] = [
 export function UsuariosStep({ onStatusUpdate }: UsuariosStepProps) {
   const [rows, setRows] = useState<GridRow[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const [lastResult, setLastResult] = useState<{ created: number; errors: number } | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [selectedEmpresa, setSelectedEmpresa] = useState<string>('');
+  const [empresas, setEmpresas] = useState<{ id: string; nome: string; cnpj: string }[]>([]);
+  
+  const { saveDraft, getStepDraft, isLoaded } = useSetupDraft();
 
-  const handleSave = async () => {
-    // Validate all rows first
-    const hasErrors = rows.some(row => Object.keys(row.errors).length > 0);
-    const hasEmptyRequired = rows.some(row => 
-      !row.data.email?.trim() || !row.data.password?.trim() || !row.data.nome_completo?.trim()
-    );
+  // Load empresas
+  useEffect(() => {
+    const loadEmpresas = async () => {
+      const { data } = await supabase.from('empresas').select('id, nome, cnpj').order('nome');
+      if (data) setEmpresas(data);
+    };
+    loadEmpresas();
+  }, []);
 
-    if (hasErrors || hasEmptyRequired) {
-      toast.error('Corrija os erros antes de salvar');
-      return;
+  // Load draft on mount
+  useEffect(() => {
+    if (isLoaded) {
+      const draftData = getStepDraft('usuarios');
+      if (draftData.length > 0) {
+        setRows(draftData);
+        toast.info('Rascunho restaurado', { description: `${draftData.length} usuário(s)` });
+      }
+    }
+  }, [isLoaded, getStepDraft]);
+
+  // Auto-save draft
+  const handleAutoSave = (updatedRows: GridRow[]) => {
+    saveDraft('usuarios', updatedRows);
+  };
+
+  // Validate all rows
+  const handleValidate = async () => {
+    setIsValidating(true);
+    const items: PreviewItem[] = [];
+    
+    const updatedRows = [...rows];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      updatedRows[i] = { ...row, status: 'validating' };
+      setRows([...updatedRows]);
+
+      // Check if has validation errors
+      if (Object.keys(row.errors).length > 0) {
+        items.push({
+          identifier: row.data.email || `Linha ${i + 1}`,
+          action: 'error',
+          details: Object.values(row.errors).join(', '),
+        });
+        updatedRows[i] = { ...row, status: 'error' };
+        continue;
+      }
+
+      if (!row.data.email?.trim() || !row.data.password || !row.data.nome_completo?.trim()) {
+        items.push({
+          identifier: row.data.email || `Linha ${i + 1}`,
+          action: 'error',
+          details: 'Campos obrigatórios não preenchidos',
+        });
+        updatedRows[i] = { ...row, status: 'error' };
+        continue;
+      }
+
+      // Check if email already exists
+      const { data: existing } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('email', row.data.email)
+        .maybeSingle();
+
+      if (existing) {
+        items.push({
+          identifier: row.data.email,
+          action: 'skip',
+          details: 'Email já cadastrado no sistema',
+        });
+        updatedRows[i] = { ...row, status: undefined, warnings: { email: 'Já existe' } };
+      } else {
+        items.push({
+          identifier: row.data.email,
+          action: 'create',
+          details: row.data.nome_completo,
+        });
+        updatedRows[i] = { ...row, status: undefined };
+      }
     }
 
-    if (rows.length === 0) {
-      toast.info('Adicione pelo menos um usuário');
+    setRows(updatedRows);
+    setPreviewItems(items);
+    setIsValidating(false);
+    setShowPreview(true);
+  };
+
+  // Apply changes
+  const handleApply = async () => {
+    const validRows = previewItems.filter(i => i.action === 'create');
+    if (validRows.length === 0) {
+      toast.info('Nenhum usuário novo para criar');
+      setShowPreview(false);
       return;
     }
 
     setIsSaving(true);
+    setProgress(0);
 
     try {
-      // Get current session token
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
@@ -80,10 +171,14 @@ export function UsuariosStep({ onStatusUpdate }: UsuariosStepProps) {
         return;
       }
 
-      // Call edge function
+      const usersToCreate = rows.filter(row => 
+        previewItems.find(p => p.identifier === row.data.email && p.action === 'create')
+      );
+
       const { data, error } = await supabase.functions.invoke('admin-create-users', {
         body: {
-          users: rows.map(row => ({
+          empresaId: selectedEmpresa || undefined,
+          users: usersToCreate.map(row => ({
             email: row.data.email,
             password: row.data.password,
             nome_completo: row.data.nome_completo,
@@ -103,13 +198,14 @@ export function UsuariosStep({ onStatusUpdate }: UsuariosStepProps) {
         const result = data.results?.find((r: any) => r.email === row.data.email);
         if (result?.success) {
           return { ...row, status: 'success' as const };
-        } else {
+        } else if (result) {
           return { 
             ...row, 
             status: 'error' as const,
-            errors: { ...row.errors, _general: result?.error || 'Erro desconhecido' }
+            errors: { ...row.errors, _general: result.error || 'Erro desconhecido' }
           };
         }
+        return row;
       });
 
       setRows(updatedRows);
@@ -117,7 +213,6 @@ export function UsuariosStep({ onStatusUpdate }: UsuariosStepProps) {
       const created = data.summary?.created || 0;
       const errors = data.summary?.errors || 0;
       
-      setLastResult({ created, errors });
       onStatusUpdate({ created, errors });
 
       if (errors === 0) {
@@ -132,62 +227,97 @@ export function UsuariosStep({ onStatusUpdate }: UsuariosStepProps) {
     }
 
     setIsSaving(false);
+    setShowPreview(false);
   };
+
+  const hasErrors = rows.some(row => Object.keys(row.errors).length > 0);
 
   return (
     <div className="space-y-6">
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
-          Crie contas de acesso para os usuários. O email será o login e o perfil será criado automaticamente.
-          Os usuários receberão acesso imediato (sem confirmação de email).
+          Crie contas de acesso. O email será o login e o perfil será criado automaticamente.
+          Os usuários terão acesso imediato (sem confirmação de email).
         </AlertDescription>
       </Alert>
 
       <Alert variant="destructive" className="border-warning/50 bg-warning/10 text-warning-foreground">
         <ShieldAlert className="h-4 w-4" />
         <AlertDescription className="text-foreground">
-          <strong>Importante:</strong> Esta operação requer permissão de <code className="text-xs bg-muted px-1 py-0.5 rounded">admin_vizio</code>.
-          As senhas são definidas diretamente - oriente os usuários a alterá-las no primeiro acesso.
+          <strong>Segurança:</strong> Esta operação requer permissão de admin.
+          Senhas são definidas diretamente - oriente os usuários a alterá-las.
         </AlertDescription>
       </Alert>
+
+      {/* Empresa selector */}
+      <div className="space-y-2">
+        <Label>Empresa (opcional - vincular automaticamente)</Label>
+        <Select value={selectedEmpresa} onValueChange={setSelectedEmpresa}>
+          <SelectTrigger className="w-full md:w-96">
+            <SelectValue placeholder="Selecione uma empresa para vincular..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Nenhuma (definir depois)</SelectItem>
+            {empresas.map(emp => (
+              <SelectItem key={emp.id} value={emp.id}>
+                {emp.nome} ({emp.cnpj})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <EditableGrid
         columns={columns}
         rows={rows}
         onRowsChange={setRows}
         emptyMessage="Nenhum usuário. Clique em 'Adicionar' ou cole do Excel."
+        isSaving={isSaving}
+        progress={isSaving ? progress : undefined}
+        onAutoSave={handleAutoSave}
       />
 
       <Separator />
 
-      <div className="flex items-center justify-between">
-        {lastResult && (
-          <div className="flex items-center gap-2 text-sm">
-            {lastResult.errors === 0 ? (
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          {hasErrors && <span className="text-destructive">Corrija os erros antes de aplicar</span>}
+        </p>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={handleValidate} 
+            disabled={isSaving || isValidating || rows.length === 0}
+            className="gap-2"
+          >
+            {isValidating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <AlertTriangle className="h-4 w-4 text-destructive" />
+              <Eye className="h-4 w-4" />
             )}
-            <span>
-              Último salvamento: {lastResult.created} criado(s)
-              {lastResult.errors > 0 && `, ${lastResult.errors} erro(s)`}
-            </span>
-          </div>
-        )}
-        <Button 
-          onClick={handleSave} 
-          disabled={isSaving || rows.length === 0}
-          className="gap-2"
-        >
-          {isSaving ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          Criar Usuários
-        </Button>
+            Validar e Revisar
+          </Button>
+          <Button 
+            onClick={handleValidate} 
+            disabled={isSaving || hasErrors || rows.length === 0}
+            className="gap-2"
+          >
+            <UserPlus className="h-4 w-4" />
+            Criar Usuários
+          </Button>
+        </div>
       </div>
+
+      {/* Preview Modal */}
+      <PreviewApplyModal
+        open={showPreview}
+        onOpenChange={setShowPreview}
+        title="Usuários"
+        items={previewItems}
+        onConfirm={handleApply}
+        isApplying={isSaving}
+      />
     </div>
   );
 }

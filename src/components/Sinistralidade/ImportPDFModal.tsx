@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,7 +9,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Upload, FileText, Loader2, CheckCircle, AlertTriangle, XCircle, Sparkles, Building2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Upload, FileText, Loader2, CheckCircle, AlertTriangle, XCircle, Sparkles, Building2, Save, Edit } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
@@ -65,7 +66,7 @@ interface ImportPDFModalProps {
   onImportComplete: () => void;
 }
 
-type Step = 'upload' | 'analyzing' | 'preview' | 'applying';
+type Step = 'upload' | 'analyzing' | 'preview' | 'saving' | 'applying';
 
 export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportPDFModalProps) {
   const { toast } = useToast();
@@ -76,6 +77,9 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [editedRows, setEditedRows] = useState<ExtractedRow[]>([]);
+  const [originalRows, setOriginalRows] = useState<ExtractedRow[]>([]);
+  const [changesSaved, setChangesSaved] = useState(true);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   // Fetch empresas
   const { data: empresas = [] } = useQuery({
@@ -91,6 +95,30 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
     },
   });
 
+  // Detect dirty state (changes not saved)
+  const isDirty = useMemo(() => {
+    if (editedRows.length !== originalRows.length) return true;
+    return editedRows.some((row, index) => {
+      const original = originalRows[index];
+      if (!original) return true;
+      return (
+        row.competencia !== original.competencia ||
+        row.vidas !== original.vidas ||
+        row.faturamento !== original.faturamento ||
+        row.sinistros !== original.sinistros ||
+        row.iu !== original.iu ||
+        row.observacoes !== original.observacoes
+      );
+    });
+  }, [editedRows, originalRows]);
+
+  // Update changesSaved when dirty state changes
+  useEffect(() => {
+    if (isDirty) {
+      setChangesSaved(false);
+    }
+  }, [isDirty]);
+
   const resetState = useCallback(() => {
     setStep('upload');
     setSelectedFile(null);
@@ -98,6 +126,9 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
     setJobId(null);
     setProgress(0);
     setEditedRows([]);
+    setOriginalRows([]);
+    setChangesSaved(true);
+    setLastError(null);
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,6 +183,7 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
 
     setStep('analyzing');
     setProgress(0);
+    setLastError(null);
 
     try {
       // 1. Render PDF to images
@@ -197,6 +229,7 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
 
       if (!response.ok) {
         const error = await response.json();
+        setLastError(JSON.stringify(error, null, 2));
         throw new Error(error.error || 'Erro na análise');
       }
 
@@ -205,7 +238,9 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
 
       setExtractedData(result.extractedData);
       setEditedRows(result.extractedData.rows);
+      setOriginalRows(result.extractedData.rows);
       setJobId(result.jobId);
+      setChangesSaved(true);
       setStep('preview');
 
       toast({
@@ -230,10 +265,78 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
     setEditedRows(newRows);
   };
 
+  // Save changes to import_job_rows
+  const handleSaveChanges = async () => {
+    if (!jobId) return;
+
+    setStep('saving');
+
+    try {
+      const { data: session } = await supabase.auth.getSession();
+
+      // Update each row in the database
+      for (let i = 0; i < editedRows.length; i++) {
+        const row = editedRows[i];
+        const { error } = await supabase
+          .from('import_job_rows')
+          .update({
+            mapped_data: {
+              competencia: row.competencia,
+              vidas: row.vidas,
+              faturamento: row.faturamento,
+              sinistros: row.sinistros,
+              iu: row.iu,
+              observacoes: row.observacoes,
+              page_ref: row.page_ref,
+              operadora: extractedData?.meta.operadora,
+              produto: extractedData?.meta.produto
+            }
+          })
+          .eq('job_id', jobId)
+          .eq('row_number', i + 1);
+
+        if (error) {
+          console.error('Error updating row:', error);
+          throw new Error(`Erro ao salvar linha ${i + 1}`);
+        }
+      }
+
+      // Update original rows to match edited rows
+      setOriginalRows([...editedRows]);
+      setChangesSaved(true);
+      setStep('preview');
+
+      toast({
+        title: "Alterações salvas!",
+        description: "Os dados editados foram salvos no staging."
+      });
+
+    } catch (error) {
+      console.error('Save error:', error);
+      toast({
+        title: "Erro ao salvar",
+        description: error instanceof Error ? error.message : "Falha ao salvar alterações.",
+        variant: "destructive"
+      });
+      setStep('preview');
+    }
+  };
+
   const handleApprove = async () => {
     if (!jobId) return;
 
+    // Block if there are unsaved changes
+    if (isDirty && !changesSaved) {
+      toast({
+        title: "Alterações não salvas",
+        description: "Salve as alterações antes de aprovar.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setStep('applying');
+    setLastError(null);
 
     try {
       const { data: session } = await supabase.auth.getSession();
@@ -253,6 +356,7 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
 
       if (!response.ok) {
         const error = await response.json();
+        setLastError(JSON.stringify(error, null, 2));
         throw new Error(error.error || 'Erro na aprovação');
       }
 
@@ -278,11 +382,6 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
     }
   };
 
-  const formatCurrency = (value: number | null) => {
-    if (value === null) return '-';
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-  };
-
   const getDocumentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       'demonstrativo_resultado': 'Demonstrativo de Resultado',
@@ -306,6 +405,7 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
             {step === 'upload' && 'Selecione o PDF do relatório Unimed e a empresa.'}
             {step === 'analyzing' && 'Analisando o PDF com inteligência artificial...'}
             {step === 'preview' && 'Revise os dados extraídos antes de aplicar.'}
+            {step === 'saving' && 'Salvando alterações...'}
             {step === 'applying' && 'Aplicando dados no sistema...'}
           </DialogDescription>
         </DialogHeader>
@@ -356,6 +456,17 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
                 </div>
               </div>
 
+              {lastError && (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    <details>
+                      <summary className="cursor-pointer font-medium">Ver erro completo</summary>
+                      <pre className="mt-2 text-xs overflow-auto max-h-32">{lastError}</pre>
+                    </details>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <Card className="bg-muted/50">
                 <CardContent className="pt-4">
                   <h4 className="font-medium mb-2">Tipos de relatório suportados:</h4>
@@ -399,6 +510,20 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
           {/* Step 3: Preview */}
           {step === 'preview' && extractedData && (
             <div className="space-y-4 py-4">
+              {/* Dirty state warning */}
+              {isDirty && !changesSaved && (
+                <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+                  <Edit className="h-4 w-4" />
+                  <AlertDescription className="flex items-center justify-between">
+                    <span>Você tem alterações não salvas. Salve antes de aprovar.</span>
+                    <Button size="sm" onClick={handleSaveChanges}>
+                      <Save className="h-4 w-4 mr-1" />
+                      Salvar
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {/* Summary Cards */}
               <div className="grid grid-cols-4 gap-3">
                 <Card>
@@ -441,6 +566,11 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
                         {extractedData.meta.periodo_inicio} a {extractedData.meta.periodo_fim}
                       </Badge>
                     )}
+                    {jobId && (
+                      <Badge variant="outline" className="font-mono text-xs">
+                        Job: {jobId.slice(0, 8)}...
+                      </Badge>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -463,6 +593,18 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
                     ))}
                   </CardContent>
                 </Card>
+              )}
+
+              {/* Last Error */}
+              {lastError && (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    <details>
+                      <summary className="cursor-pointer font-medium">Ver erro completo</summary>
+                      <pre className="mt-2 text-xs overflow-auto max-h-32">{lastError}</pre>
+                    </details>
+                  </AlertDescription>
+                </Alert>
               )}
 
               {/* Data Table */}
@@ -556,12 +698,18 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
 
               {/* Action Buttons */}
               <div className="flex gap-3 pt-2">
-                <Button variant="outline" onClick={resetState} className="flex-1">
+                <Button variant="outline" onClick={resetState}>
                   Cancelar
                 </Button>
+                {isDirty && !changesSaved && (
+                  <Button variant="secondary" onClick={handleSaveChanges}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Salvar Alterações
+                  </Button>
+                )}
                 <Button 
                   onClick={handleApprove} 
-                  disabled={extractedData.summary.errors > 0}
+                  disabled={extractedData.summary.errors > 0 || (isDirty && !changesSaved)}
                   className="flex-1"
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
@@ -571,7 +719,15 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
             </div>
           )}
 
-          {/* Step 4: Applying */}
+          {/* Step 4: Saving */}
+          {step === 'saving' && (
+            <div className="py-12 text-center space-y-6">
+              <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+              <p className="font-medium">Salvando alterações...</p>
+            </div>
+          )}
+
+          {/* Step 5: Applying */}
           {step === 'applying' && (
             <div className="py-12 text-center space-y-6">
               <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />

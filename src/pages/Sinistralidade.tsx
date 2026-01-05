@@ -13,6 +13,10 @@ import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ImportPDFModal } from "@/components/Sinistralidade/ImportPDFModal";
+import { ImportHistorySection } from "@/components/Sinistralidade/ImportHistorySection";
+import { IndicadoresPeriodoSection } from "@/components/Sinistralidade/IndicadoresPeriodoSection";
+import { PDFImportChecklist } from "@/components/Sinistralidade/PDFImportChecklist";
+import { useAuth } from "@/hooks/useAuth";
 
 type Sinistralidade = {
   id: string;
@@ -47,10 +51,27 @@ const formatPercent = (value: number) => {
 
 export default function Sinistralidade() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { empresaSelecionada } = useEmpresa();
   const [empresaFilter, setEmpresaFilter] = useState<string>("todas");
   const [periodoFilter, setPeriodoFilter] = useState<string>("12");
   const [importModalOpen, setImportModalOpen] = useState(false);
+
+  // Check if user is admin_vizio
+  const { data: isAdminVizio = false } = useQuery({
+    queryKey: ["is-admin-vizio", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return false;
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "admin_vizio")
+        .maybeSingle();
+      return !!data;
+    },
+    enabled: !!user?.id
+  });
 
   // Fetch empresas
   const { data: empresas = [] } = useQuery({
@@ -571,12 +592,25 @@ export default function Sinistralidade() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Indicadores de Período */}
+        <IndicadoresPeriodoSection empresaId={empresaSelecionada || undefined} />
+
+        {/* Histórico de Importações PDF */}
+        <ImportHistorySection empresaId={empresaSelecionada || undefined} />
+
+        {/* Checklist de Teste (somente admin_vizio) */}
+        <PDFImportChecklist visible={isAdminVizio} />
       </div>
 
       <ImportPDFModal
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
-        onImportComplete={() => queryClient.invalidateQueries({ queryKey: ["sinistralidade"] })}
+        onImportComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ["sinistralidade"] });
+          queryClient.invalidateQueries({ queryKey: ["import-jobs-sinistralidade"] });
+          queryClient.invalidateQueries({ queryKey: ["indicadores-periodo"] });
+        }}
       />
     </AppLayout>
   );

@@ -157,9 +157,15 @@ serve(async (req) => {
         .order('row_number')
         .range(from, to);
 
-      // Apply status filter
+      // Apply status filter (supports comma-separated values like "error,warning")
       if (statusFilter && statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
+        if (statusFilter.includes(',')) {
+          // Multiple status values
+          const statuses = statusFilter.split(',').map((s: string) => s.trim());
+          query = query.in('status', statuses);
+        } else {
+          query = query.eq('status', statusFilter);
+        }
       }
 
       // Apply search filter for beneficiarios

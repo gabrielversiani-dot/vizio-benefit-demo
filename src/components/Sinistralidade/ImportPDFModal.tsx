@@ -291,7 +291,39 @@ export function ImportPDFModal({ open, onOpenChange, onImportComplete }: ImportP
       if (!response.ok) {
         const errorText = await response.text();
         setLastError(errorText);
-        throw new Error('Erro na análise');
+        
+        // Parse structured error if available
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.code === 'LOVABLE_AI_RATE_LIMIT') {
+            toast({
+              title: "Limite temporário atingido",
+              description: "Aguarde alguns instantes e tente novamente.",
+              variant: "destructive"
+            });
+          } else if (errorData.code === 'LOVABLE_AI_NO_BALANCE') {
+            toast({
+              title: "Sem saldo de AI",
+              description: "Recarregue seu saldo em Settings → Cloud & AI balance.",
+              variant: "destructive"
+            });
+          } else {
+            toast({
+              title: "Erro na análise",
+              description: errorData.message || "Clique em 'Ver detalhes' para mais informações.",
+              variant: "destructive"
+            });
+          }
+        } catch {
+          toast({
+            title: "Erro na análise",
+            description: "Clique em 'Ver detalhes' para copiar o erro completo.",
+            variant: "destructive"
+          });
+        }
+        
+        setStep('upload');
+        return;
       }
 
       const result = await response.json();

@@ -8,14 +8,24 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Use Lovable AI (no external API key needed) - falls back to OpenAI if configured
+// Use Lovable AI exclusively (no external API key needed)
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-// Lovable AI endpoint
-const LOVABLE_AI_URL = 'https://api.lovable.dev/v1/chat/completions';
+// Lovable AI Gateway endpoint (correct URL)
+const LOVABLE_AI_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
+
+// Custom error types for structured error handling
+interface AIError {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+function createAIError(code: string, message: string, details?: Record<string, unknown>): AIError {
+  return { code, message, details };
+}
 
 // System prompt for PDF extraction
 const EXTRACTION_SYSTEM_PROMPT = `Você é um especialista em extração de dados de relatórios de sinistralidade de operadoras de saúde, especificamente Unimed Belo Horizonte.
@@ -132,13 +142,13 @@ interface ExtractedData {
 
 async function callLovableAIVision(pages: PageImage[]): Promise<{ content: string; tokensUsed: number }> {
   if (!LOVABLE_API_KEY) {
-    throw new Error('LOVABLE_API_KEY não configurada');
+    throw createAIError('LOVABLE_AI_NOT_CONFIGURED', 'LOVABLE_API_KEY não configurada. Verifique as configurações do projeto.');
   }
 
   console.log(`Calling Lovable AI Vision with ${pages.length} pages...`);
 
   // Build content array with images
-  const contentArray: Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }> = [
+  const contentArray: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
     {
       type: 'text',
       text: `Analise as ${pages.length} página(s) do relatório Unimed BH e extraia os dados estruturados conforme o schema especificado. Retorne SOMENTE o JSON, sem markdown.`
@@ -170,14 +180,21 @@ async function callLovableAIVision(pages: PageImage[]): Promise<{ content: strin
         { role: 'user', content: contentArray }
       ],
       max_tokens: 4000,
-      temperature: 0.1,
     }),
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    console.error('Lovable AI Vision error:', response.status, error);
-    throw new Error(`Lovable AI error: ${response.status} - ${error}`);
+    const errorText = await response.text();
+    console.error('Lovable AI Vision error:', response.status, errorText);
+    
+    if (response.status === 429) {
+      throw createAIError('LOVABLE_AI_RATE_LIMIT', 'Limite temporário do workspace atingido. Aguarde alguns instantes e tente novamente.', { providerStatus: 429 });
+    }
+    if (response.status === 402) {
+      throw createAIError('LOVABLE_AI_NO_BALANCE', 'Sem saldo de AI. Recarregue em Settings → Cloud & AI balance.', { providerStatus: 402 });
+    }
+    
+    throw createAIError('LOVABLE_AI_ERROR', `Erro na API Lovable AI: ${response.status}`, { providerStatus: response.status, providerBody: errorText.slice(0, 500) });
   }
 
   const data = await response.json();
@@ -219,7 +236,7 @@ async function extractTextFromPdf(pdfBytes: Uint8Array): Promise<string> {
 
 async function callLovableAIText(text: string): Promise<{ content: string; tokensUsed: number }> {
   if (!LOVABLE_API_KEY) {
-    throw new Error('LOVABLE_API_KEY não configurada');
+    throw createAIError('LOVABLE_AI_NOT_CONFIGURED', 'LOVABLE_API_KEY não configurada. Verifique as configurações do projeto.');
   }
 
   const clipped = text.length > 30000 ? text.slice(0, 30000) : text;
@@ -240,14 +257,21 @@ async function callLovableAIText(text: string): Promise<{ content: string; token
         },
       ],
       max_tokens: 4000,
-      temperature: 0.1,
     }),
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    console.error('Lovable AI Text error:', response.status, error);
-    throw new Error(`Lovable AI error: ${response.status} - ${error}`);
+    const errorText = await response.text();
+    console.error('Lovable AI Text error:', response.status, errorText);
+    
+    if (response.status === 429) {
+      throw createAIError('LOVABLE_AI_RATE_LIMIT', 'Limite temporário do workspace atingido. Aguarde alguns instantes e tente novamente.', { providerStatus: 429 });
+    }
+    if (response.status === 402) {
+      throw createAIError('LOVABLE_AI_NO_BALANCE', 'Sem saldo de AI. Recarregue em Settings → Cloud & AI balance.', { providerStatus: 402 });
+    }
+    
+    throw createAIError('LOVABLE_AI_ERROR', `Erro na API Lovable AI: ${response.status}`, { providerStatus: response.status, providerBody: errorText.slice(0, 500) });
   }
 
   const data = await response.json();
@@ -540,7 +564,7 @@ serve(async (req) => {
         user_id: user.id,
         tokens_used: tokensUsed,
         duration_ms: Date.now() - startTime,
-        model_used: 'gpt-4o',
+        model_used: mode === 'server_fallback' ? 'google/gemini-2.5-flash' : 'google/gemini-2.5-pro',
         input_summary: mode === 'server_fallback'
           ? `server_fallback (texto)`
           : `${pagesCount} páginas PDF`,
@@ -702,9 +726,27 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in sinistralidade-pdf-agent:', error);
+    
+    // Check if it's a structured AIError
+    if (error && typeof error === 'object' && 'code' in error && 'message' in error) {
+      const aiError = error as AIError;
+      const statusCode = aiError.code === 'LOVABLE_AI_RATE_LIMIT' ? 429 
+        : aiError.code === 'LOVABLE_AI_NO_BALANCE' ? 402 
+        : 500;
+      return new Response(JSON.stringify({ 
+        error: aiError.message,
+        code: aiError.code,
+        details: aiError.details
+      }), {
+        status: statusCode,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
     return new Response(JSON.stringify({ 
       error: error instanceof Error ? error.message : 'Erro interno',
-      details: error instanceof Error ? error.stack : undefined
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? { stack: error.stack } : undefined
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

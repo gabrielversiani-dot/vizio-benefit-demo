@@ -20,6 +20,7 @@ import { PDFImportChecklist } from "@/components/Sinistralidade/PDFImportCheckli
 import { SinistroDocsSection } from "@/components/Sinistralidade/SinistroDocsSection";
 import { useAuth } from "@/hooks/useAuth";
 import { useSinistralidadeResumoPeriodo } from "@/hooks/useSinistralidadeResumoPeriodo";
+import { AIAlertasSection } from "@/components/Sinistralidade/AIAlertasSection";
 
 type Sinistralidade = {
   id: string;
@@ -835,51 +836,13 @@ export default function Sinistralidade() {
             </CardContent>
           </Card>
 
-          {/* Alertas e Recomendações */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Alertas e Recomendações</CardTitle>
-              <CardDescription>Pontos de atenção identificados</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {alertas.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-[260px]">
-                  <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mb-3">
-                    <TrendingDown className="h-6 w-6 text-green-600" />
-                  </div>
-                  <p className="text-muted-foreground">Nenhum alerta no momento</p>
-                  <p className="text-sm text-muted-foreground">Indicadores dentro dos parâmetros</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {alertas.map((alerta, index) => (
-                    <div 
-                      key={index} 
-                      className={`p-4 rounded-lg border ${
-                        alerta.severidade === 'error' 
-                          ? 'bg-destructive/10 border-destructive/20' 
-                          : alerta.severidade === 'warning'
-                          ? 'bg-orange-500/10 border-orange-500/20'
-                          : 'bg-blue-500/10 border-blue-500/20'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <AlertTriangle className={`h-4 w-4 ${
-                          alerta.severidade === 'error' 
-                            ? 'text-destructive' 
-                            : alerta.severidade === 'warning'
-                            ? 'text-orange-500'
-                            : 'text-blue-500'
-                        }`} />
-                        <span className="font-medium">{alerta.tipo}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{alerta.mensagem}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {/* Alertas e Recomendações (com bloco IA preparado) */}
+          <AIAlertasSection 
+            alertas={alertas}
+            empresaId={empresaSelecionada}
+            periodoInicio={resumo.periodo_inicio}
+            periodoFim={resumo.periodo_fim}
+          />
         </div>
 
         {/* Tabela por Empresa */}

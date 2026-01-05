@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.sinistralidade-pdf-agent]
 verify_jwt = false
+
+[functions.ai-alertas-recomendacoes]
+verify_jwt = false

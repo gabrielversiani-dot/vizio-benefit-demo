@@ -10,6 +10,18 @@ const corsHeaders = {
 const RD_API_BASE = 'https://crm.rdstation.com/api/v1';
 
 const PIPELINE_NAME = 'Gestão de Sinistro';
+
+// Map RD Stage index to internal status
+const STAGE_INDEX_TO_STATUS: Record<number, string> = {
+  0: 'em_analise',
+  1: 'pendente_documentos',
+  2: 'em_andamento',
+  3: 'enviado_operadora',
+  4: 'aprovado',
+  5: 'pago',
+};
+
+// Map internal status to stage index
 const STATUS_TO_STAGE: Record<string, number> = {
   em_analise: 0,
   pendente_documentos: 1,
@@ -20,6 +32,40 @@ const STATUS_TO_STAGE: Record<string, number> = {
   pago: 5,
   concluido: 5,
 };
+
+// Final statuses that trigger SLA calculation
+const FINAL_STATUSES = ['aprovado', 'negado', 'pago', 'concluido'];
+
+interface RDDeal {
+  _id: string;
+  name: string;
+  rating?: number;
+  deal_stage?: {
+    _id: string;
+    name: string;
+  };
+  user?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  organization?: {
+    _id: string;
+    name: string;
+  };
+  created_at: string;
+  updated_at?: string;
+  custom_fields?: Array<{ label: string; value: unknown }>;
+}
+
+function generateEventHash(type: string, dealId: string, stageId: string | null, timestamp: string): string {
+  const dateKey = timestamp.split('T')[0];
+  return `${type}_${dealId}_${stageId || 'none'}_${dateKey}`;
+}
+
+function mapStageToStatus(stageIndex: number): string {
+  return STAGE_INDEX_TO_STATUS[stageIndex] || 'em_analise';
+}
 
 serve(async (req) => {
   const requestId = crypto.randomUUID().substring(0, 8);
@@ -63,13 +109,355 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { sinistroId, action = 'sync' } = body;
-    
-    if (!sinistroId) {
-      throw new Error('sinistroId is required');
+    const { sinistroId, empresaId, action = 'push' } = body;
+
+    console.log(`[${requestId}] Action: ${action}, Sinistro: ${sinistroId || 'N/A'}, Empresa: ${empresaId || 'N/A'}`);
+
+    // Get user profile and check permissions
+    const { data: userProfile } = await adminClient
+      .from('profiles')
+      .select('empresa_id, nome_completo')
+      .eq('id', user.id)
+      .single();
+
+    const { data: isAdminVizio } = await adminClient
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'admin_vizio')
+      .single();
+
+    // ============= ACTION: PULL (Import from RD -> System) =============
+    if (action === 'pull') {
+      if (!empresaId) {
+        throw new Error('empresaId is required for pull action');
+      }
+
+      // Permission check for pull
+      if (!isAdminVizio && userProfile?.empresa_id !== empresaId) {
+        throw new Error('Permission denied for this empresa');
+      }
+
+      console.log(`[${requestId}] Starting PULL sync for empresa ${empresaId}`);
+
+      // Get empresa info
+      const { data: empresa, error: empresaError } = await adminClient
+        .from('empresas')
+        .select('id, nome')
+        .eq('id', empresaId)
+        .single();
+
+      if (empresaError || !empresa) {
+        throw new Error('Empresa not found');
+      }
+
+      // Get linked RD organizations
+      const { data: linkedOrgs, error: linkedOrgsError } = await adminClient
+        .from('empresa_rd_organizacoes')
+        .select('rd_organization_id, rd_organization_name')
+        .eq('empresa_id', empresaId)
+        .eq('active', true);
+
+      if (linkedOrgsError) {
+        throw new Error(`Failed to get linked orgs: ${linkedOrgsError.message}`);
+      }
+
+      if (!linkedOrgs || linkedOrgs.length === 0) {
+        console.log(`[${requestId}] No RD organizations linked to empresa ${empresaId}`);
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Nenhuma organização RD Station vinculada a esta empresa',
+          code: 'no_rd_org',
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        });
+      }
+
+      console.log(`[${requestId}] Found ${linkedOrgs.length} linked organizations`);
+
+      // Get the Sinistro pipeline
+      console.log(`[${requestId}] Fetching pipelines from RD Station`);
+      const pipelinesResp = await fetch(`${RD_API_BASE}/deal_pipelines?token=${rdToken}`);
+      if (!pipelinesResp.ok) {
+        const errText = await pipelinesResp.text();
+        console.error(`[${requestId}] Failed to fetch pipelines:`, errText);
+        throw new Error('Failed to fetch pipelines from RD Station');
+      }
+
+      const pipelinesData = await pipelinesResp.json();
+      const pipeline = pipelinesData.deal_pipelines?.find(
+        (p: { name: string }) => p.name.toLowerCase().includes('sinistro')
+      );
+
+      if (!pipeline) {
+        console.error(`[${requestId}] Pipeline "${PIPELINE_NAME}" not found`);
+        return new Response(JSON.stringify({
+          success: false,
+          error: `Pipeline "${PIPELINE_NAME}" não encontrado no RD Station`,
+          code: 'no_pipeline',
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        });
+      }
+
+      console.log(`[${requestId}] Using pipeline: ${pipeline.name} (${pipeline._id})`);
+
+      const stages = pipeline.deal_stages || [];
+      const stageIdToIndex: Record<string, number> = {};
+      stages.forEach((stage: { _id: string }, index: number) => {
+        stageIdToIndex[stage._id] = index;
+      });
+
+      // Collect all deals from all linked organizations
+      const allDeals: (RDDeal & { rdOrgId: string })[] = [];
+
+      for (const org of linkedOrgs) {
+        console.log(`[${requestId}] Fetching deals for org ${org.rd_organization_id} (${org.rd_organization_name})`);
+
+        try {
+          // Fetch deals from this organization in the sinistro pipeline
+          let page = 1;
+          let hasMore = true;
+
+          while (hasMore) {
+            const dealsUrl = `${RD_API_BASE}/deals?token=${rdToken}&deal_pipeline_id=${pipeline._id}&organization_id=${org.rd_organization_id}&page=${page}&limit=100`;
+            const dealsResp = await fetch(dealsUrl);
+
+            if (!dealsResp.ok) {
+              console.error(`[${requestId}] Failed to fetch deals for org ${org.rd_organization_id}: ${dealsResp.status}`);
+              break;
+            }
+
+            const dealsData = await dealsResp.json();
+            const deals: RDDeal[] = dealsData.deals || [];
+
+            console.log(`[${requestId}] Page ${page}: Found ${deals.length} deals`);
+
+            for (const deal of deals) {
+              // Only include deals that belong to this organization
+              if (deal.organization?._id === org.rd_organization_id) {
+                allDeals.push({ ...deal, rdOrgId: org.rd_organization_id });
+              }
+            }
+
+            hasMore = deals.length === 100;
+            page++;
+          }
+        } catch (err) {
+          console.error(`[${requestId}] Error fetching deals for org ${org.rd_organization_id}:`, err);
+        }
+      }
+
+      console.log(`[${requestId}] Total deals found: ${allDeals.length}`);
+
+      // Process each deal: UPSERT into sinistros_vida
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      let errors = 0;
+
+      for (const deal of allDeals) {
+        try {
+          const stageIndex = deal.deal_stage?._id ? (stageIdToIndex[deal.deal_stage._id] ?? 0) : 0;
+          const mappedStatus = mapStageToStatus(stageIndex);
+          const isFinal = FINAL_STATUSES.includes(mappedStatus);
+
+          // Extract info from deal
+          const beneficiarioNome = deal.name.replace(/^Sinistro\s*-\s*/i, '').trim() || 'Beneficiário não informado';
+          
+          // Try to extract data from custom fields
+          let tipoSinistro = 'outros';
+          let beneficiarioCpf: string | null = null;
+          let dataOcorrencia: string | null = null;
+          let valorEstimado: number | null = null;
+
+          for (const cf of deal.custom_fields || []) {
+            const label = (cf.label || '').toLowerCase();
+            if (label.includes('tipo') && label.includes('sinistro')) {
+              tipoSinistro = String(cf.value || 'outros');
+            }
+            if (label.includes('cpf')) {
+              beneficiarioCpf = cf.value ? String(cf.value) : null;
+            }
+            if (label.includes('data') && label.includes('ocorr')) {
+              dataOcorrencia = cf.value ? String(cf.value).split('T')[0] : null;
+            }
+            if (label.includes('valor') && label.includes('estimado')) {
+              valorEstimado = cf.value ? Number(cf.value) : null;
+            }
+          }
+
+          // Check if sinistro already exists for this deal in this empresa
+          const { data: existing } = await adminClient
+            .from('sinistros_vida')
+            .select('id, status, rd_stage_id, updated_at, created_at')
+            .eq('empresa_id', empresaId)
+            .eq('rd_deal_id', deal._id)
+            .single();
+
+          const sinistroData = {
+            empresa_id: empresaId,
+            beneficiario_nome: beneficiarioNome,
+            beneficiario_cpf: beneficiarioCpf,
+            tipo_sinistro: tipoSinistro,
+            data_ocorrencia: dataOcorrencia || deal.created_at.split('T')[0],
+            valor_estimado: valorEstimado,
+            status: mappedStatus,
+            rd_deal_id: deal._id,
+            rd_org_id: deal.rdOrgId,
+            rd_pipeline_id: pipeline._id,
+            rd_stage_id: deal.deal_stage?._id || null,
+            rd_owner_id: deal.user?._id || null,
+            rd_last_sync_at: new Date().toISOString(),
+            rd_sync_status: 'ok',
+            rd_sync_error: null,
+          };
+
+          if (existing) {
+            // Update existing record
+            const oldStatus = existing.status;
+            const statusChanged = oldStatus !== mappedStatus;
+
+            const updateData: Record<string, unknown> = {
+              ...sinistroData,
+              updated_at: new Date().toISOString(),
+            };
+
+            // If status changed to final and not already concluded, set concluido_em and sla
+            if (isFinal && statusChanged) {
+              const createdAt = new Date(existing.created_at);
+              const now = new Date();
+              const slaMinutos = Math.round((now.getTime() - createdAt.getTime()) / 60000);
+              updateData.concluido_em = now.toISOString();
+              updateData.sla_minutos = slaMinutos;
+            }
+
+            const { error: updateError } = await adminClient
+              .from('sinistros_vida')
+              .update(updateData)
+              .eq('id', existing.id);
+
+            if (updateError) {
+              console.error(`[${requestId}] Error updating sinistro for deal ${deal._id}:`, updateError.message);
+              errors++;
+              continue;
+            }
+
+            updated++;
+
+            // Log timeline if status changed
+            if (statusChanged) {
+              const eventHash = generateEventHash('sync_status', deal._id, deal.deal_stage?._id || null, new Date().toISOString());
+
+              await adminClient
+                .from('sinistros_vida_timeline')
+                .insert({
+                  sinistro_id: existing.id,
+                  empresa_id: empresaId,
+                  tipo_evento: 'status_changed',
+                  descricao: `Status alterado de "${oldStatus}" para "${mappedStatus}" via sincronização RD`,
+                  status_anterior: oldStatus,
+                  status_novo: mappedStatus,
+                  source: 'rd_station',
+                  criado_por: user.id,
+                  usuario_nome: userProfile?.nome_completo || 'Sistema',
+                  event_hash: eventHash,
+                  meta: {
+                    rd_deal_id: deal._id,
+                    rd_stage_id: deal.deal_stage?._id,
+                    sync_action: 'pull',
+                  },
+                })
+                .then(({ error }) => {
+                  if (error && error.code !== '23505') {
+                    console.error(`[${requestId}] Timeline error:`, error.message);
+                  }
+                });
+            }
+
+          } else {
+            // Insert new record
+            const insertData = {
+              ...sinistroData,
+              criado_por: user.id,
+              aberto_por_role: 'rd_station',
+            };
+
+            const { data: newSinistro, error: insertError } = await adminClient
+              .from('sinistros_vida')
+              .insert(insertData)
+              .select()
+              .single();
+
+            if (insertError) {
+              // Check for unique constraint violation (duplicate)
+              if (insertError.code === '23505') {
+                console.log(`[${requestId}] Duplicate deal ${deal._id}, skipping`);
+                skipped++;
+              } else {
+                console.error(`[${requestId}] Error inserting sinistro for deal ${deal._id}:`, insertError.message);
+                errors++;
+              }
+              continue;
+            }
+
+            created++;
+
+            // Log timeline for new import
+            const eventHash = generateEventHash('created_import', deal._id, null, new Date().toISOString());
+
+            await adminClient
+              .from('sinistros_vida_timeline')
+              .insert({
+                sinistro_id: newSinistro.id,
+                empresa_id: empresaId,
+                tipo_evento: 'created',
+                descricao: 'Sinistro importado do RD Station CRM',
+                status_novo: mappedStatus,
+                source: 'rd_station',
+                criado_por: user.id,
+                usuario_nome: userProfile?.nome_completo || 'Sistema',
+                event_hash: eventHash,
+                meta: {
+                  rd_deal_id: deal._id,
+                  rd_org_id: deal.rdOrgId,
+                  sync_action: 'pull',
+                },
+              })
+              .then(({ error }) => {
+                if (error && error.code !== '23505') {
+                  console.error(`[${requestId}] Timeline error:`, error.message);
+                }
+              });
+          }
+        } catch (err) {
+          console.error(`[${requestId}] Error processing deal ${deal._id}:`, err);
+          errors++;
+        }
+      }
+
+      console.log(`[${requestId}] Pull sync completed: ${created} created, ${updated} updated, ${skipped} skipped, ${errors} errors`);
+
+      return new Response(JSON.stringify({
+        success: true,
+        action: 'pull',
+        processed: allDeals.length,
+        created,
+        updated,
+        skipped,
+        errors,
+        requestId,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log(`[${requestId}] Action: ${action}, Sinistro: ${sinistroId}`);
+    // ============= ACTION: PUSH (System -> RD) =============
+    if (!sinistroId) {
+      throw new Error('sinistroId is required for push action');
+    }
 
     // Get sinistro data with empresa info
     const { data: sinistro, error: sinistroError } = await adminClient
@@ -85,20 +473,7 @@ serve(async (req) => {
       throw new Error('Sinistro not found');
     }
 
-    // Permission check
-    const { data: userProfile } = await adminClient
-      .from('profiles')
-      .select('empresa_id, nome_completo')
-      .eq('id', user.id)
-      .single();
-
-    const { data: isAdminVizio } = await adminClient
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('role', 'admin_vizio')
-      .single();
-
+    // Permission check for push
     if (!isAdminVizio && userProfile?.empresa_id !== sinistro.empresa_id) {
       throw new Error('Permission denied');
     }
@@ -127,7 +502,6 @@ serve(async (req) => {
     if (!rdOrgId) {
       console.log(`[${requestId}] No RD organization linked to empresa ${sinistro.empresa_id}`);
       
-      // Update sync status
       await adminClient
         .from('sinistros_vida')
         .update({
@@ -279,7 +653,7 @@ serve(async (req) => {
       .eq('id', sinistroId);
 
     // Log to timeline (idempotent via event_hash)
-    const eventHash = `sync_${dealId}_${new Date().toISOString().split('T')[0]}`;
+    const eventHash = generateEventHash('sync_push', dealId!, targetStage._id, new Date().toISOString());
     
     const { error: timelineError } = await adminClient
       .from('sinistros_vida_timeline')
@@ -299,6 +673,7 @@ serve(async (req) => {
           rd_pipeline_id: pipeline._id,
           rd_stage_id: targetStage._id,
           created: syncResult!.created,
+          sync_action: 'push',
         },
       });
 
@@ -307,10 +682,11 @@ serve(async (req) => {
       console.error(`[${requestId}] Timeline error:`, timelineError);
     }
 
-    console.log(`[${requestId}] Sync completed successfully`);
+    console.log(`[${requestId}] Push sync completed successfully`);
 
     return new Response(JSON.stringify({
       success: true,
+      action: 'push',
       dealId,
       created: syncResult!.created,
       pipelineName: pipeline.name,

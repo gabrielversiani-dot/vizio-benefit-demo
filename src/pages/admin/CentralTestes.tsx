@@ -42,6 +42,12 @@ interface DemoSeedResult {
   seedId: string;
   empresaDemoId: string;
   empresaNome?: string;
+  demoUser?: {
+    email: string;
+    password: string;
+    created: boolean;
+    role: string;
+  };
   summary?: {
     contratos: number;
     faturas: number;
@@ -801,6 +807,16 @@ export default function CentralTestes() {
                           <p className="mt-2 text-sm text-green-600">
                             Empresa: <strong>{demoResult.empresaNome}</strong> ({demoResult.empresaDemoId})
                           </p>
+                        )}
+                        {demoResult.demoUser && (
+                          <div className="mt-3 p-3 bg-white rounded border border-green-300">
+                            <p className="font-medium text-green-800 text-sm mb-1">👤 Login do Cliente Demo:</p>
+                            <div className="text-sm text-green-700 space-y-1">
+                              <p>Email: <code className="bg-green-100 px-1 rounded">{demoResult.demoUser.email}</code></p>
+                              <p>Senha: <code className="bg-green-100 px-1 rounded">{demoResult.demoUser.password}</code></p>
+                              <p className="text-xs text-green-600">Role: {demoResult.demoUser.role} • {demoResult.demoUser.created ? 'Recém criado' : 'Já existia'}</p>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>

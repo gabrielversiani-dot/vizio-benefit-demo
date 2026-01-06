@@ -511,6 +511,7 @@ export type Database = {
         Row: {
           arquivo_nome: string | null
           arquivo_url: string | null
+          concluida_em: string | null
           created_at: string
           criado_por: string
           descricao: string | null
@@ -534,6 +535,7 @@ export type Database = {
         Insert: {
           arquivo_nome?: string | null
           arquivo_url?: string | null
+          concluida_em?: string | null
           created_at?: string
           criado_por: string
           descricao?: string | null
@@ -557,6 +559,7 @@ export type Database = {
         Update: {
           arquivo_nome?: string | null
           arquivo_url?: string | null
+          concluida_em?: string | null
           created_at?: string
           criado_por?: string
           descricao?: string | null
@@ -596,6 +599,8 @@ export type Database = {
           descricao: string | null
           empresa_id: string | null
           id: string
+          meta: Json | null
+          source: string | null
           status_anterior: Database["public"]["Enums"]["status_demanda"] | null
           status_novo: Database["public"]["Enums"]["status_demanda"] | null
           tipo_evento: string | null
@@ -609,6 +614,8 @@ export type Database = {
           descricao?: string | null
           empresa_id?: string | null
           id?: string
+          meta?: Json | null
+          source?: string | null
           status_anterior?: Database["public"]["Enums"]["status_demanda"] | null
           status_novo?: Database["public"]["Enums"]["status_demanda"] | null
           tipo_evento?: string | null
@@ -622,6 +629,8 @@ export type Database = {
           descricao?: string | null
           empresa_id?: string | null
           id?: string
+          meta?: Json | null
+          source?: string | null
           status_anterior?: Database["public"]["Enums"]["status_demanda"] | null
           status_novo?: Database["public"]["Enums"]["status_demanda"] | null
           tipo_evento?: string | null
@@ -1827,6 +1836,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      format_sla_duration: { Args: { seconds: number }; Returns: string }
       get_user_empresa_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {

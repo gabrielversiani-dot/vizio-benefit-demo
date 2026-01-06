@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { LayoutDashboard, DollarSign, Activity, Users, FileText, Settings, Shield, FileSignature, RefreshCw, ClipboardList, Heart, Bot, FlaskConical, Construction } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
@@ -48,16 +50,30 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="border-b border-sidebar-border px-6 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary">
-            <Activity className="h-6 w-6 text-sidebar-primary-foreground" />
+      <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
+        <Link to="/dashboard" className="flex items-center gap-3 group">
+          <div className="relative flex items-center justify-center rounded-lg bg-sidebar-accent/80 dark:bg-transparent p-1.5 transition-colors group-hover:bg-sidebar-accent">
+            <img 
+              src="/branding/vizio-logo.jpeg" 
+              alt="Vizio Capital" 
+              loading="lazy"
+              className="h-8 w-auto object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                const fallback = target.nextElementSibling as HTMLElement;
+                if (fallback) fallback.style.display = 'flex';
+              }}
+            />
+            <div className="hidden h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary">
+              <Activity className="h-5 w-5 text-sidebar-primary-foreground" />
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-semibold text-sidebar-foreground">Vizio Capital</h2>
-            <p className="text-xs text-sidebar-foreground/60">Gestão de Benefícios</p>
+          <div className="hidden sm:block">
+            <h2 className="text-base font-semibold text-sidebar-foreground group-hover:text-sidebar-primary transition-colors">Vizio Capital</h2>
+            <p className="text-[10px] text-sidebar-foreground/60">Gestão de Benefícios</p>
           </div>
-        </div>
+        </Link>
       </SidebarHeader>
 
       <SidebarContent className="px-3 py-4">

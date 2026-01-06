@@ -88,8 +88,22 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
-            <Activity className="h-7 w-7 text-primary-foreground" />
+          <div className="relative flex items-center justify-center rounded-lg bg-muted dark:bg-transparent p-2">
+            <img 
+              src="/branding/vizio-logo.jpeg" 
+              alt="Vizio Capital" 
+              loading="lazy"
+              className="h-12 w-auto object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                const fallback = target.nextElementSibling as HTMLElement;
+                if (fallback) fallback.style.display = 'flex';
+              }}
+            />
+            <div className="hidden h-12 w-12 items-center justify-center rounded-lg bg-primary">
+              <Activity className="h-7 w-7 text-primary-foreground" />
+            </div>
           </div>
           <div>
             <h1 className="text-2xl font-bold">Vizio Capital</h1>

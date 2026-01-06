@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Activity } from "lucide-react";
 import { z } from "zod";
+import { BrandLogo } from "@/components/Brand/BrandLogo";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -88,41 +88,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center justify-center mb-8">
-          <div className="relative flex items-center justify-center p-2">
-            {/* Dark mode: logo with dark background */}
-            <img 
-              src="/branding/vizio-logo-dark-bg.jpeg" 
-              alt="Vizio Capital" 
-              loading="lazy"
-              className="hidden dark:block h-16 w-auto object-contain rounded"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-              }}
-            />
-            {/* Light mode: dark text logo */}
-            <img 
-              src="/branding/vizio-logo.png" 
-              alt="Vizio Capital" 
-              loading="lazy"
-              className="block dark:hidden h-16 w-auto object-contain"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-                const fallback = document.getElementById('auth-logo-fallback');
-                if (fallback) fallback.style.display = 'flex';
-              }}
-            />
-            <div id="auth-logo-fallback" className="hidden items-center gap-3">
-              <div className="h-12 w-12 flex items-center justify-center rounded-lg bg-primary">
-                <Activity className="h-7 w-7 text-primary-foreground" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold">Vizio Capital</h1>
-                <p className="text-sm text-muted-foreground">Gestão de Benefícios</p>
-              </div>
-            </div>
-          </div>
+          <BrandLogo size="auth" />
         </div>
 
         <Tabs defaultValue="login" className="w-full">

@@ -177,6 +177,9 @@ serve(async (req) => {
       console.log(`[${requestId}] Found ${linkedOrgs.length} linked organizations`);
 
       // Get the Sinistro pipeline
+      // Check if pipeline ID is configured in secrets
+      const configuredPipelineId = Deno.env.get('RD_SINISTRO_PIPELINE_ID');
+      
       console.log(`[${requestId}] Fetching pipelines from RD Station`);
       const pipelinesResp = await fetch(`${RD_API_BASE}/deal_pipelines?token=${rdToken}`);
       if (!pipelinesResp.ok) {
@@ -186,16 +189,45 @@ serve(async (req) => {
       }
 
       const pipelinesData = await pipelinesResp.json();
-      const pipeline = pipelinesData.deal_pipelines?.find(
-        (p: { name: string }) => p.name.toLowerCase().includes('sinistro')
-      );
+      const allPipelines = pipelinesData.deal_pipelines || [];
+      
+      // Log all available pipelines for debugging
+      console.log(`[${requestId}] Available pipelines in RD Station:`);
+      allPipelines.forEach((p: { _id: string; name: string }) => {
+        console.log(`[${requestId}]   - ${p.name} (ID: ${p._id})`);
+      });
+      
+      // Find pipeline: by configured ID, or by name containing 'sinistro' or 'vida'
+      let pipeline = null;
+      
+      if (configuredPipelineId) {
+        pipeline = allPipelines.find((p: { _id: string }) => p._id === configuredPipelineId);
+        if (pipeline) {
+          console.log(`[${requestId}] Using configured pipeline: ${pipeline.name} (${pipeline._id})`);
+        }
+      }
+      
+      if (!pipeline) {
+        // Try to find by name patterns
+        pipeline = allPipelines.find((p: { name: string }) => 
+          p.name.toLowerCase().includes('sinistro')
+        );
+      }
+      
+      if (!pipeline) {
+        pipeline = allPipelines.find((p: { name: string }) => 
+          p.name.toLowerCase().includes('vida')
+        );
+      }
 
       if (!pipeline) {
-        console.error(`[${requestId}] Pipeline "${PIPELINE_NAME}" not found`);
+        const pipelineNames = allPipelines.map((p: { name: string }) => p.name).join(', ');
+        console.error(`[${requestId}] Pipeline for Sinistros Vida not found. Available: ${pipelineNames}`);
         return new Response(JSON.stringify({
           success: false,
-          error: `Pipeline "${PIPELINE_NAME}" não encontrado no RD Station`,
+          error: `Pipeline para Sinistros Vida não encontrado. Configure RD_SINISTRO_PIPELINE_ID ou crie um funil com "Sinistro" ou "Vida" no nome. Disponíveis: ${pipelineNames}`,
           code: 'no_pipeline',
+          availablePipelines: allPipelines.map((p: { _id: string; name: string }) => ({ id: p._id, name: p.name })),
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400,

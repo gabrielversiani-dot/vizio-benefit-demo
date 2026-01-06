@@ -703,6 +703,59 @@ export type Database = {
           },
         ]
       }
+      empresa_rd_sinistro_config: {
+        Row: {
+          created_at: string
+          empresa_id: string
+          id: string
+          sinistro_pipeline_id: string
+          sinistro_pipeline_name: string | null
+          sinistro_stage_concluido_id: string | null
+          sinistro_stage_concluido_name: string | null
+          sinistro_stage_em_andamento_id: string | null
+          sinistro_stage_em_andamento_name: string | null
+          sinistro_stage_inicial_id: string
+          sinistro_stage_inicial_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          empresa_id: string
+          id?: string
+          sinistro_pipeline_id: string
+          sinistro_pipeline_name?: string | null
+          sinistro_stage_concluido_id?: string | null
+          sinistro_stage_concluido_name?: string | null
+          sinistro_stage_em_andamento_id?: string | null
+          sinistro_stage_em_andamento_name?: string | null
+          sinistro_stage_inicial_id: string
+          sinistro_stage_inicial_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          sinistro_pipeline_id?: string
+          sinistro_pipeline_name?: string | null
+          sinistro_stage_concluido_id?: string | null
+          sinistro_stage_concluido_name?: string | null
+          sinistro_stage_em_andamento_id?: string | null
+          sinistro_stage_em_andamento_name?: string | null
+          sinistro_stage_inicial_id?: string
+          sinistro_stage_inicial_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empresa_rd_sinistro_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empresas: {
         Row: {
           ativo: boolean

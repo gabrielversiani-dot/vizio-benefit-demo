@@ -32,7 +32,8 @@ import {
   DollarSign,
   Filter,
   RefreshCw,
-  Link2Off
+  Link2Off,
+  Settings2
 } from "lucide-react";
 import { useState } from "react";
 import { SinistroDetailModal } from "@/components/SinistrosVida/SinistroDetailModal";
@@ -40,6 +41,7 @@ import { SinistroFormModal } from "@/components/SinistrosVida/SinistroFormModal"
 import { HistoricoGeralSinistrosTimeline } from "@/components/SinistrosVida/HistoricoGeralSinistrosTimeline";
 import { SinistroStatusEditor } from "@/components/SinistrosVida/SinistroStatusEditor";
 import { SinistroPrioridadeEditor } from "@/components/SinistrosVida/SinistroPrioridadeEditor";
+import { RDSinistroPipelineConfigModal } from "@/components/SinistrosVida/RDSinistroPipelineConfigModal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
@@ -87,9 +89,12 @@ export default function SinistrosVida() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedSinistro, setSelectedSinistro] = useState<any>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const { empresaSelecionada, isAdminVizio } = useEmpresa();
+  const [isPipelineConfigOpen, setIsPipelineConfigOpen] = useState(false);
+  const { empresaSelecionada, empresas, isAdminVizio } = useEmpresa();
   const { canCreateSinistrosVida, canManageSinistrosVida, isAdmin } = usePermissions();
   const queryClient = useQueryClient();
+  
+  const empresaAtual = empresas.find(e => e.id === empresaSelecionada);
 
   // Fetch sinistros from database
   const { data: sinistros = [], isLoading, refetch } = useQuery({
@@ -271,6 +276,17 @@ export default function SinistrosVida() {
               <Button 
                 variant="outline" 
                 size="sm"
+                onClick={() => setIsPipelineConfigOpen(true)}
+              >
+                <Settings2 className="h-4 w-4 mr-2" />
+                Configurar Pipeline
+              </Button>
+            )}
+            
+            {isAdminVizio && (
+              <Button 
+                variant="outline" 
+                size="sm"
                 onClick={() => pullMutation.mutate()}
                 disabled={pullMutation.isPending}
               >
@@ -302,8 +318,17 @@ export default function SinistrosVida() {
 
         {/* Form Modal */}
         <SinistroFormModal open={isFormOpen} onOpenChange={setIsFormOpen} />
-
-        {/* KPIs */}
+        
+        {/* Pipeline Config Modal */}
+        {empresaSelecionada && empresaAtual && (
+          <RDSinistroPipelineConfigModal
+            open={isPipelineConfigOpen}
+            onOpenChange={setIsPipelineConfigOpen}
+            empresaId={empresaSelecionada}
+            empresaNome={empresaAtual.nome}
+            onUpdate={() => refetch()}
+          />
+        )}
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

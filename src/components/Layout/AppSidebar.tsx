@@ -53,12 +53,12 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <Link to="/dashboard" className="flex items-center gap-2 group">
           <div className="relative flex items-center justify-center transition-colors">
-            {/* Dark mode: white text logo */}
+            {/* Dark mode: logo with dark background */}
             <img 
-              src="/branding/vizio-logo.png" 
+              src="/branding/vizio-logo-dark-bg.jpeg" 
               alt="Vizio Capital" 
               loading="lazy"
-              className="hidden dark:block h-10 w-auto object-contain"
+              className="hidden dark:block h-10 w-auto object-contain rounded"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.style.display = 'none';
@@ -66,7 +66,7 @@ export function AppSidebar() {
             />
             {/* Light mode: dark text logo */}
             <img 
-              src="/branding/vizio-logo-dark.png" 
+              src="/branding/vizio-logo.png" 
               alt="Vizio Capital" 
               loading="lazy"
               className="block dark:hidden h-10 w-auto object-contain"

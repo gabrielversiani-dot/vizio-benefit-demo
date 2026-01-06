@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ClipboardList, Clock, CheckCircle2, AlertCircle, Filter, Eye, RefreshCw, Settings2, Link2Off, AlertTriangle } from "lucide-react";
+import { ClipboardList, Clock, CheckCircle2, AlertCircle, Filter, Eye, RefreshCw, Settings2, Link2Off, AlertTriangle, Plus } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, formatDistanceToNow } from "date-fns";
@@ -17,6 +17,7 @@ import { DemandaDetailModal } from "@/components/Demandas/DemandaDetailModal";
 import { HistoricoGeralTimeline } from "@/components/Demandas/HistoricoGeralTimeline";
 import { toast } from "sonner";
 import { formatSLA, calculateSLASeconds } from "@/lib/formatSLA";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   pendente: { label: "Pendente", color: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30" },
@@ -73,6 +74,7 @@ interface LinkedRDOrg {
 
 const Demandas = () => {
   const { empresaSelecionada, empresas, isAdminVizio } = useEmpresa();
+  const { isAdmin, canCreateDemandas, canManageDemandas } = usePermissions();
   const [filtroStatus, setFiltroStatus] = useState<string>("todos");
   const [filtroTipo, setFiltroTipo] = useState<string>("todos");
   const [filtroSource, setFiltroSource] = useState<string>("todos");
@@ -224,10 +226,10 @@ const Demandas = () => {
           </div>
           
           <div className="flex flex-wrap items-center gap-2">
-            {/* RD Station Status & Sync */}
-            {rdEnabled ? (
+            {/* RD Station Status & Sync - only for admins */}
+            {isAdmin && rdEnabled && (
               <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
                   <div className="w-2 h-2 rounded-full bg-purple-500 mr-2" />
                   RD Station ({linkedRDOrgs.length} org{linkedRDOrgs.length > 1 ? 's' : ''})
                 </Badge>
@@ -246,14 +248,17 @@ const Demandas = () => {
                   </span>
                 )}
               </div>
-            ) : (
+            )}
+            
+            {/* RD not linked badge - only for admins */}
+            {isAdmin && !rdEnabled && (
               <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200">
                 <Link2Off className="h-3 w-3 mr-2" />
                 RD Station não vinculado
               </Badge>
             )}
             
-            {/* Config button - only for admin */}
+            {/* Config button - only for admin_vizio */}
             {isAdminVizio && (
               <Button 
                 variant="outline" 
@@ -266,20 +271,6 @@ const Demandas = () => {
             )}
           </div>
         </div>
-
-        {/* Warning for non-admin users when RD not configured */}
-        {!rdEnabled && !isAdminVizio && (
-          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
-            <div>
-              <p className="font-medium text-amber-800">Integração não configurada</p>
-              <p className="text-sm text-amber-700">
-                A sincronização com RD Station não está ativa para sua empresa. 
-                Solicite à corretora para configurar a integração.
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* KPIs */}
         <div className="grid gap-4 md:grid-cols-4">

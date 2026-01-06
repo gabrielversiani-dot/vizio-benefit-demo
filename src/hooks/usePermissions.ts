@@ -162,8 +162,9 @@ const rolePermissions: Record<string, Permission[]> = {
     "beneficiarios:view",
     // Movimentação - View Only (coming soon)
     "movimentacao:view",
-    // Demandas - View Only (coming soon)
+    // Demandas - View + Create (can open new demands)
     "demandas:view",
+    "demandas:create",
     // Client can access Configurações (limited)
     "configuracoes:view",
   ],
@@ -184,6 +185,8 @@ const rolePermissions: Record<string, Permission[]> = {
     "beneficiarios:view",
     // Movimentação - View Only (coming soon)
     "movimentacao:view",
+    // Demandas - View only
+    "demandas:view",
     // Client can access Configurações (limited)
     "configuracoes:view",
   ],
@@ -264,6 +267,11 @@ export function usePermissions() {
     canManageBeneficiarios,
     canImportBeneficiarios,
     canViewBeneficiarios,
+    
+    // Demandas
+    canViewDemandas: hasPermission("demandas:view"),
+    canCreateDemandas: hasPermission("demandas:create"),
+    canManageDemandas: hasPermission("demandas:edit"),
     
     // Admin
     canViewAdmin,

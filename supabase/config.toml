@@ -51,3 +51,12 @@ verify_jwt = false
 
 [functions.delete-sinistralidade-periodo]
 verify_jwt = true
+
+[functions.rdstation-sync-demandas]
+verify_jwt = false
+
+[functions.rdstation-list-organizations]
+verify_jwt = false
+
+[functions.rdstation-link-empresa]
+verify_jwt = false

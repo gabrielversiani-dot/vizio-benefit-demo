@@ -1325,6 +1325,53 @@ export type Database = {
           },
         ]
       }
+      rd_station_sync_logs: {
+        Row: {
+          completed_at: string | null
+          empresa_id: string
+          error_message: string | null
+          id: string
+          request_id: string | null
+          started_at: string
+          status: string
+          tasks_imported: number | null
+          tasks_skipped: number | null
+          tasks_updated: number | null
+        }
+        Insert: {
+          completed_at?: string | null
+          empresa_id: string
+          error_message?: string | null
+          id?: string
+          request_id?: string | null
+          started_at?: string
+          status: string
+          tasks_imported?: number | null
+          tasks_skipped?: number | null
+          tasks_updated?: number | null
+        }
+        Update: {
+          completed_at?: string | null
+          empresa_id?: string
+          error_message?: string | null
+          id?: string
+          request_id?: string | null
+          started_at?: string
+          status?: string
+          tasks_imported?: number | null
+          tasks_skipped?: number | null
+          tasks_updated?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rd_station_sync_logs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sinistralidade: {
         Row: {
           categoria: Database["public"]["Enums"]["categoria_beneficio"]

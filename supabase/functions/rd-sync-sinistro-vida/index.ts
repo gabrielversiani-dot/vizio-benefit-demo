@@ -9,7 +9,6 @@ const corsHeaders = {
 
 const RD_API_BASE = 'https://crm.rdstation.com/api/v1';
 
-// Pipeline and stage mappings - should be configured based on actual RD Station setup
 const PIPELINE_NAME = 'Gestão de Sinistro';
 const STATUS_TO_STAGE: Record<string, number> = {
   em_analise: 0,
@@ -23,6 +22,9 @@ const STATUS_TO_STAGE: Record<string, number> = {
 };
 
 serve(async (req) => {
+  const requestId = crypto.randomUUID().substring(0, 8);
+  console.log(`[${requestId}] rd-sync-sinistro-vida started`);
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -33,9 +35,11 @@ serve(async (req) => {
     const rdToken = Deno.env.get('RD_STATION_API_TOKEN');
 
     if (!rdToken) {
+      console.error(`[${requestId}] RD_STATION_API_TOKEN not configured`);
       return new Response(JSON.stringify({
         success: false,
         error: 'RD_STATION_API_TOKEN not configured',
+        code: 'missing_token',
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
@@ -59,13 +63,15 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { sinistroId } = body;
+    const { sinistroId, action = 'sync' } = body;
     
     if (!sinistroId) {
       throw new Error('sinistroId is required');
     }
 
-    // Get sinistro data
+    console.log(`[${requestId}] Action: ${action}, Sinistro: ${sinistroId}`);
+
+    // Get sinistro data with empresa info
     const { data: sinistro, error: sinistroError } = await adminClient
       .from('sinistros_vida')
       .select(`
@@ -82,7 +88,7 @@ serve(async (req) => {
     // Permission check
     const { data: userProfile } = await adminClient
       .from('profiles')
-      .select('empresa_id')
+      .select('empresa_id, nome_completo')
       .eq('id', user.id)
       .single();
 
@@ -97,13 +103,15 @@ serve(async (req) => {
       throw new Error('Permission denied');
     }
 
-    // Get RD organization ID from empresa
+    // Get RD organization ID
     let rdOrgId = sinistro.rd_org_id;
+    
+    // Try from empresa direct link
     if (!rdOrgId && sinistro.empresas?.rd_station_organization_id) {
       rdOrgId = sinistro.empresas.rd_station_organization_id;
     }
 
-    // Get RD org from linked table if not found
+    // Try from linked organizations table
     if (!rdOrgId) {
       const { data: linkedOrg } = await adminClient
         .from('empresa_rd_organizacoes')
@@ -117,12 +125,33 @@ serve(async (req) => {
     }
 
     if (!rdOrgId) {
-      throw new Error('No RD Station organization linked to this company');
+      console.log(`[${requestId}] No RD organization linked to empresa ${sinistro.empresa_id}`);
+      
+      // Update sync status
+      await adminClient
+        .from('sinistros_vida')
+        .update({
+          rd_sync_status: 'error',
+          rd_sync_error: 'Empresa não possui organização RD Station vinculada',
+        })
+        .eq('id', sinistroId);
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'No RD Station organization linked to this company',
+        code: 'no_rd_org',
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      });
     }
 
-    // Get or find pipeline
+    // Get pipelines from RD
+    console.log(`[${requestId}] Fetching pipelines from RD Station`);
     const pipelinesResp = await fetch(`${RD_API_BASE}/deal_pipelines?token=${rdToken}`);
     if (!pipelinesResp.ok) {
+      const errText = await pipelinesResp.text();
+      console.error(`[${requestId}] Failed to fetch pipelines:`, errText);
       throw new Error('Failed to fetch pipelines from RD Station');
     }
     
@@ -132,8 +161,27 @@ serve(async (req) => {
     );
 
     if (!pipeline) {
-      throw new Error(`Pipeline "${PIPELINE_NAME}" not found in RD Station. Please create it first.`);
+      console.error(`[${requestId}] Pipeline "${PIPELINE_NAME}" not found`);
+      
+      await adminClient
+        .from('sinistros_vida')
+        .update({
+          rd_sync_status: 'error',
+          rd_sync_error: `Pipeline "${PIPELINE_NAME}" não encontrado no RD Station`,
+        })
+        .eq('id', sinistroId);
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: `Pipeline "${PIPELINE_NAME}" not found. Please create it in RD Station.`,
+        code: 'no_pipeline',
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      });
     }
+
+    console.log(`[${requestId}] Using pipeline: ${pipeline.name} (${pipeline._id})`);
 
     const stages = pipeline.deal_stages || [];
     const targetStageIndex = STATUS_TO_STAGE[sinistro.status] || 0;
@@ -146,59 +194,74 @@ serve(async (req) => {
     let dealId = sinistro.rd_deal_id;
     let syncResult: { created: boolean; dealId: string };
 
+    const dealPayload = {
+      name: `Sinistro - ${sinistro.beneficiario_nome}`,
+      deal_stage_id: targetStage._id,
+      rating: sinistro.prioridade === 'critica' ? 5 : 
+              sinistro.prioridade === 'alta' ? 4 :
+              sinistro.prioridade === 'media' ? 3 : 2,
+      custom_fields: [
+        { label: 'Tipo Sinistro', value: sinistro.tipo_sinistro },
+        { label: 'Status Sistema', value: sinistro.status },
+        { label: 'Valor Estimado', value: sinistro.valor_estimado || 0 },
+        { label: 'Sinistro ID', value: sinistro.id },
+        { label: 'Beneficiário CPF', value: sinistro.beneficiario_cpf || '' },
+        { label: 'Data Ocorrência', value: sinistro.data_ocorrencia },
+      ],
+    };
+
     if (dealId) {
       // Update existing deal
+      console.log(`[${requestId}] Updating existing deal ${dealId}`);
+      
       const updateResp = await fetch(`${RD_API_BASE}/deals/${dealId}?token=${rdToken}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: `Sinistro - ${sinistro.beneficiario_nome}`,
-          deal_stage_id: targetStage._id,
-          deal_source_id: null,
-          custom_fields: [
-            { label: 'Tipo Sinistro', value: sinistro.tipo_sinistro },
-            { label: 'Status Sistema', value: sinistro.status },
-            { label: 'Valor Estimado', value: sinistro.valor_estimado || 0 },
-          ],
-        }),
+        body: JSON.stringify(dealPayload),
       });
 
       if (!updateResp.ok) {
         const errText = await updateResp.text();
-        throw new Error(`Failed to update deal: ${errText}`);
+        console.error(`[${requestId}] Failed to update deal:`, errText);
+        
+        // If deal not found, create new one
+        if (updateResp.status === 404) {
+          console.log(`[${requestId}] Deal not found in RD, creating new one`);
+          dealId = null;
+        } else {
+          throw new Error(`Failed to update deal: ${errText}`);
+        }
+      } else {
+        syncResult = { created: false, dealId };
       }
-
-      syncResult = { created: false, dealId };
-    } else {
+    }
+    
+    if (!dealId) {
       // Create new deal
+      console.log(`[${requestId}] Creating new deal in RD Station`);
+      
+      const createPayload = {
+        ...dealPayload,
+        organization_id: rdOrgId,
+        deal_pipeline_id: pipeline._id,
+      };
+
       const createResp = await fetch(`${RD_API_BASE}/deals?token=${rdToken}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: `Sinistro - ${sinistro.beneficiario_nome}`,
-          organization_id: rdOrgId,
-          deal_pipeline_id: pipeline._id,
-          deal_stage_id: targetStage._id,
-          rating: sinistro.prioridade === 'critica' ? 5 : 
-                  sinistro.prioridade === 'alta' ? 4 :
-                  sinistro.prioridade === 'media' ? 3 : 2,
-          custom_fields: [
-            { label: 'Tipo Sinistro', value: sinistro.tipo_sinistro },
-            { label: 'Status Sistema', value: sinistro.status },
-            { label: 'Valor Estimado', value: sinistro.valor_estimado || 0 },
-            { label: 'Sinistro ID', value: sinistro.id },
-          ],
-        }),
+        body: JSON.stringify(createPayload),
       });
 
       if (!createResp.ok) {
         const errText = await createResp.text();
+        console.error(`[${requestId}] Failed to create deal:`, errText);
         throw new Error(`Failed to create deal: ${errText}`);
       }
 
       const createData = await createResp.json();
       dealId = createData._id;
       syncResult = { created: true, dealId };
+      console.log(`[${requestId}] Created deal ${dealId}`);
     }
 
     // Update sinistro with RD data
@@ -215,39 +278,50 @@ serve(async (req) => {
       })
       .eq('id', sinistroId);
 
-    // Log to timeline
-    const { data: profile } = await adminClient
-      .from('profiles')
-      .select('nome_completo')
-      .eq('id', user.id)
-      .single();
-
-    await adminClient
+    // Log to timeline (idempotent via event_hash)
+    const eventHash = `sync_${dealId}_${new Date().toISOString().split('T')[0]}`;
+    
+    const { error: timelineError } = await adminClient
       .from('sinistros_vida_timeline')
       .insert({
         sinistro_id: sinistroId,
         empresa_id: sinistro.empresa_id,
         tipo_evento: 'sync',
-        descricao: syncResult.created 
+        descricao: syncResult!.created 
           ? 'Deal criado no RD Station CRM'
           : 'Sincronizado com RD Station CRM',
         source: 'rd_station',
         criado_por: user.id,
-        usuario_nome: profile?.nome_completo || 'Sistema',
-        meta: { rd_deal_id: dealId, created: syncResult.created },
+        usuario_nome: userProfile?.nome_completo || 'Sistema',
+        event_hash: eventHash,
+        meta: { 
+          rd_deal_id: dealId, 
+          rd_pipeline_id: pipeline._id,
+          rd_stage_id: targetStage._id,
+          created: syncResult!.created,
+        },
       });
+
+    // Ignore duplicate timeline errors
+    if (timelineError && timelineError.code !== '23505') {
+      console.error(`[${requestId}] Timeline error:`, timelineError);
+    }
+
+    console.log(`[${requestId}] Sync completed successfully`);
 
     return new Response(JSON.stringify({
       success: true,
       dealId,
-      created: syncResult.created,
+      created: syncResult!.created,
+      pipelineName: pipeline.name,
+      stageName: targetStage.name,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('rd-sync-sinistro-vida error:', errorMessage);
+    console.error(`[${requestId}] Error:`, errorMessage);
     
     return new Response(JSON.stringify({
       success: false,

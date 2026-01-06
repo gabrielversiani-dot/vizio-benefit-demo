@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,8 +14,8 @@ const STAGE_INDEX_TO_STATUS: Record<number, string> = {
   1: 'pendente_documentos',
   2: 'em_andamento',
   3: 'enviado_operadora',
-  4: 'aprovado', // Could also be 'negado' - we'll check deal properties
-  5: 'concluido', // Could also be 'pago'
+  4: 'aprovado',
+  5: 'concluido',
 };
 
 interface RDWebhookPayload {
@@ -45,12 +46,39 @@ interface RDWebhookPayload {
         label: string;
         value: unknown;
       }>;
+      updated_at?: string;
     };
     previous_data?: Record<string, unknown>;
   };
 }
 
+// Generate deterministic hash for timeline idempotency
+async function generateEventHash(parts: string[]): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(parts.join('|'));
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+}
+
+// Format SLA duration
+function formatSLA(minutes: number): string {
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || days > 0) parts.push(`${hours}h`);
+  parts.push(`${mins}m`);
+  
+  return parts.join(' ');
+}
+
 serve(async (req) => {
+  const requestId = crypto.randomUUID().substring(0, 8);
+  console.log(`[${requestId}] rd-webhook-sinistro-vida started`);
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -64,36 +92,40 @@ serve(async (req) => {
     });
 
     const payload: RDWebhookPayload = await req.json();
-    console.log('Received webhook:', JSON.stringify(payload, null, 2));
+    console.log(`[${requestId}] Received webhook:`, JSON.stringify({ 
+      event_uuid: payload.event_uuid,
+      event_type: payload.event_type,
+      deal_id: payload.data?.deal?._id,
+    }));
 
     const eventId = payload.event_uuid;
     const eventType = payload.event_type;
     const deal = payload.data?.deal;
 
     if (!deal?._id) {
-      console.log('No deal ID in payload, ignoring');
-      return new Response(JSON.stringify({ success: true, ignored: true }), {
+      console.log(`[${requestId}] No deal ID in payload, ignoring`);
+      return new Response(JSON.stringify({ success: true, ignored: true, reason: 'no_deal_id' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Check idempotency
+    // Check idempotency in rd_webhook_events
     const { data: existingEvent } = await adminClient
       .from('rd_webhook_events')
-      .select('id')
+      .select('id, status')
       .eq('provider', 'rd')
       .eq('event_id', eventId)
       .single();
 
     if (existingEvent) {
-      console.log(`Event ${eventId} already processed, ignoring`);
+      console.log(`[${requestId}] Event ${eventId} already processed (status: ${existingEvent.status})`);
       return new Response(JSON.stringify({ success: true, duplicate: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     // Store event for idempotency
-    await adminClient
+    const { error: insertEventError } = await adminClient
       .from('rd_webhook_events')
       .insert({
         provider: 'rd',
@@ -103,6 +135,17 @@ serve(async (req) => {
         status: 'processing',
       });
 
+    if (insertEventError) {
+      // Handle race condition - another request already inserted
+      if (insertEventError.code === '23505') {
+        console.log(`[${requestId}] Event ${eventId} already being processed (race condition)`);
+        return new Response(JSON.stringify({ success: true, duplicate: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      throw insertEventError;
+    }
+
     // Find sinistro by rd_deal_id
     const { data: sinistro, error: sinistroError } = await adminClient
       .from('sinistros_vida')
@@ -111,12 +154,11 @@ serve(async (req) => {
       .single();
 
     if (sinistroError || !sinistro) {
-      console.log(`No sinistro found for deal ${deal._id}`);
+      console.log(`[${requestId}] No sinistro found for deal ${deal._id}`);
       
-      // Mark event as ignored
       await adminClient
         .from('rd_webhook_events')
-        .update({ status: 'ignored', processed_at: new Date().toISOString() })
+        .update({ status: 'ignored', processed_at: new Date().toISOString(), error: 'no_sinistro_found' })
         .eq('event_id', eventId);
 
       return new Response(JSON.stringify({ success: true, ignored: true, reason: 'no_sinistro' }), {
@@ -124,19 +166,23 @@ serve(async (req) => {
       });
     }
 
+    console.log(`[${requestId}] Found sinistro ${sinistro.id} for deal ${deal._id}`);
+
     const updates: Record<string, unknown> = {
       rd_last_sync_at: new Date().toISOString(),
       rd_sync_status: 'ok',
+      rd_sync_error: null,
     };
 
     let timelineDescription = '';
-    let oldStatus = sinistro.status;
+    let timelineEventType = 'sync';
+    const oldStatus = sinistro.status;
     let newStatus = sinistro.status;
 
     // Handle stage change
     if (deal.deal_stage) {
-      const stageOrder = deal.deal_stage.order || 0;
-      newStatus = STAGE_INDEX_TO_STATUS[stageOrder] || sinistro.status;
+      const stageOrder = deal.deal_stage.order ?? 0;
+      const mappedStatus = STAGE_INDEX_TO_STATUS[stageOrder];
       
       // Check stage name for more specific status
       const stageName = deal.deal_stage.name?.toLowerCase() || '';
@@ -146,19 +192,22 @@ serve(async (req) => {
         newStatus = 'pago';
       } else if (stageName.includes('conclu')) {
         newStatus = 'concluido';
+      } else if (mappedStatus) {
+        newStatus = mappedStatus;
       }
 
       if (newStatus !== sinistro.status) {
         updates.status = newStatus;
         updates.rd_stage_id = deal.deal_stage._id;
         timelineDescription = `Status alterado para "${newStatus}" via RD Station`;
+        timelineEventType = 'status_changed';
 
         // Set completion time if completing
-        if (['concluido', 'pago'].includes(newStatus) && !sinistro.concluido_em) {
-          updates.concluido_em = new Date().toISOString();
+        if (['concluido', 'pago', 'negado'].includes(newStatus) && !sinistro.concluido_em) {
+          const now = new Date();
+          updates.concluido_em = now.toISOString();
           const createdAt = new Date(sinistro.created_at).getTime();
-          const now = Date.now();
-          updates.sla_minutos = Math.round((now - createdAt) / 60000);
+          updates.sla_minutos = Math.round((now.getTime() - createdAt) / 60000);
         }
       }
     }
@@ -171,8 +220,8 @@ serve(async (req) => {
       }
     }
 
-    // Apply updates
-    if (Object.keys(updates).length > 1) { // More than just rd_last_sync_at
+    // Apply updates to sinistro
+    if (Object.keys(updates).length > 3) { // More than just sync fields
       const { error: updateError } = await adminClient
         .from('sinistros_vida')
         .update(updates)
@@ -181,52 +230,78 @@ serve(async (req) => {
       if (updateError) {
         throw updateError;
       }
+      console.log(`[${requestId}] Updated sinistro ${sinistro.id} with:`, Object.keys(updates));
+    }
 
-      // Create timeline entry
-      if (timelineDescription) {
-        const slaMinutos = updates.sla_minutos as number | undefined;
-        const slaHuman = slaMinutos 
-          ? `${Math.floor(slaMinutos / 60)}h ${slaMinutos % 60}m`
-          : undefined;
+    // Create timeline entry with idempotency
+    if (timelineDescription) {
+      const slaMinutos = updates.sla_minutos as number | undefined;
+      const slaHuman = slaMinutos ? formatSLA(slaMinutos) : undefined;
 
-        await adminClient
-          .from('sinistros_vida_timeline')
-          .insert({
-            sinistro_id: sinistro.id,
-            empresa_id: sinistro.empresa_id,
-            tipo_evento: updates.status ? 'status_changed' : 'sync',
-            descricao: timelineDescription,
-            status_anterior: oldStatus,
-            status_novo: newStatus,
-            source: 'rd_station',
-            criado_por: sinistro.criado_por,
-            usuario_nome: deal.user?.name || 'RD Station',
-            meta: { 
-              rd_deal_id: deal._id,
-              sla_minutos: slaMinutos,
-              sla_human: slaHuman,
-            },
-          });
+      // Generate event hash for idempotency
+      const eventHash = await generateEventHash([
+        timelineEventType,
+        deal._id,
+        deal.deal_stage?._id || '',
+        deal.updated_at || payload.event_timestamp,
+      ]);
+
+      // Try to insert with idempotency check
+      const { error: timelineError } = await adminClient
+        .from('sinistros_vida_timeline')
+        .insert({
+          sinistro_id: sinistro.id,
+          empresa_id: sinistro.empresa_id,
+          tipo_evento: timelineEventType,
+          descricao: timelineDescription,
+          status_anterior: oldStatus,
+          status_novo: newStatus,
+          source: 'rd_station',
+          criado_por: sinistro.criado_por,
+          usuario_nome: deal.user?.name || 'RD Station',
+          rd_event_id: eventId,
+          event_hash: eventHash,
+          meta: { 
+            rd_deal_id: deal._id,
+            rd_stage_id: deal.deal_stage?._id,
+            rd_stage_name: deal.deal_stage?.name,
+            sla_minutos: slaMinutos,
+            sla_human: slaHuman,
+          },
+        });
+
+      if (timelineError) {
+        // Duplicate event - ignore
+        if (timelineError.code === '23505') {
+          console.log(`[${requestId}] Duplicate timeline event ignored (hash: ${eventHash})`);
+        } else {
+          console.error(`[${requestId}] Timeline insert error:`, timelineError);
+        }
+      } else {
+        console.log(`[${requestId}] Created timeline event: ${timelineEventType}`);
       }
     }
 
-    // Mark event as processed
+    // Mark webhook event as processed
     await adminClient
       .from('rd_webhook_events')
       .update({ status: 'ok', processed_at: new Date().toISOString() })
       .eq('event_id', eventId);
 
+    console.log(`[${requestId}] Webhook processed successfully`);
+
     return new Response(JSON.stringify({ 
       success: true, 
-      updated: Object.keys(updates).length > 1,
+      updated: Object.keys(updates).length > 3,
       sinistroId: sinistro.id,
+      newStatus: updates.status || null,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('rd-webhook-sinistro-vida error:', errorMessage);
+    console.error(`[${requestId}] Error:`, errorMessage);
     
     return new Response(JSON.stringify({
       success: false,

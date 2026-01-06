@@ -153,6 +153,32 @@ export function SinistroFormModal({ open, onOpenChange }: SinistroFormModalProps
           usuario_nome: profile?.nome_completo || 'Usuário',
         });
 
+      // Try to sync with RD Station (fire and forget, don't block creation)
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        if (session?.session?.access_token) {
+          fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rd-sync-sinistro-vida`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.session.access_token}`,
+            },
+            body: JSON.stringify({ sinistroId: newSinistro.id }),
+          }).then(async (resp) => {
+            if (resp.ok) {
+              const result = await resp.json();
+              if (result.created) {
+                toast.success("Deal criado no RD Station", { duration: 3000 });
+              }
+            }
+          }).catch(() => {
+            // Silently ignore RD sync errors on creation
+          });
+        }
+      } catch {
+        // Ignore RD sync errors
+      }
+
       return newSinistro;
     },
     onSuccess: () => {

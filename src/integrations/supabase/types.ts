@@ -1878,8 +1878,10 @@ export type Database = {
           criado_por: string
           descricao: string | null
           empresa_id: string
+          event_hash: string | null
           id: string
           meta: Json | null
+          rd_event_id: string | null
           sinistro_id: string
           source: string | null
           status_anterior: string | null
@@ -1892,8 +1894,10 @@ export type Database = {
           criado_por: string
           descricao?: string | null
           empresa_id: string
+          event_hash?: string | null
           id?: string
           meta?: Json | null
+          rd_event_id?: string | null
           sinistro_id: string
           source?: string | null
           status_anterior?: string | null
@@ -1906,8 +1910,10 @@ export type Database = {
           criado_por?: string
           descricao?: string | null
           empresa_id?: string
+          event_hash?: string | null
           id?: string
           meta?: Json | null
+          rd_event_id?: string | null
           sinistro_id?: string
           source?: string | null
           status_anterior?: string | null

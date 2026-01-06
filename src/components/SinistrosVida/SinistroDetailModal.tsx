@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,10 +18,14 @@ import {
   ExternalLink,
   RefreshCw,
   AlertCircle,
-  Clock
+  Clock,
+  Loader2
 } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
 import { formatSLA } from "@/lib/formatSLA";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface Sinistro {
   id: string;
@@ -63,12 +68,53 @@ const tipoSinistroConfig: Record<string, string> = {
 
 export function SinistroDetailModal({ sinistro, open, onOpenChange, canEdit }: SinistroDetailModalProps) {
   const { isAdminVizio } = usePermissions();
+  const queryClient = useQueryClient();
+  const [isSyncing, setIsSyncing] = useState(false);
 
   if (!sinistro) return null;
 
   const slaFormatted = sinistro.sla_minutos 
     ? formatSLA(sinistro.sla_minutos * 60) 
     : null;
+
+  const handleSyncRD = async () => {
+    setIsSyncing(true);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session?.session?.access_token) {
+        toast.error("Sessão expirada. Faça login novamente.");
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rd-sync-sinistro-vida`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.session.access_token}`,
+          },
+          body: JSON.stringify({ sinistroId: sinistro.id }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        toast.success(result.created 
+          ? "Deal criado no RD Station!" 
+          : "Sincronizado com RD Station!");
+        queryClient.invalidateQueries({ queryKey: ['sinistros-vida'] });
+        queryClient.invalidateQueries({ queryKey: ['sinistro-timeline', sinistro.id] });
+      } else {
+        toast.error(result.error || "Erro ao sincronizar com RD Station");
+      }
+    } catch (error) {
+      toast.error("Erro ao sincronizar com RD Station");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -93,32 +139,55 @@ export function SinistroDetailModal({ sinistro, open, onOpenChange, canEdit }: S
 
         <div className="space-y-6 py-4">
           {/* RD Station Info (Admin only) */}
-          {isAdminVizio && sinistro.rd_deal_id && (
+          {isAdminVizio && (
             <div className="rounded-lg border p-4 bg-muted/30">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <RefreshCw className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">RD Station CRM</span>
-                  {sinistro.rd_sync_status === 'ok' ? (
-                    <Badge variant="outline" className="text-success border-success">
-                      Sincronizado
-                    </Badge>
-                  ) : sinistro.rd_sync_status === 'erro' ? (
-                    <Badge variant="outline" className="text-destructive border-destructive">
-                      Erro
-                    </Badge>
-                  ) : null}
+                  {sinistro.rd_deal_id ? (
+                    sinistro.rd_sync_status === 'ok' ? (
+                      <Badge variant="outline" className="text-success border-success">
+                        Sincronizado
+                      </Badge>
+                    ) : sinistro.rd_sync_status === 'error' ? (
+                      <Badge variant="outline" className="text-destructive border-destructive">
+                        Erro
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">Vinculado</Badge>
+                    )
+                  ) : (
+                    <Badge variant="secondary">Não vinculado</Badge>
+                  )}
                 </div>
-                <Button variant="outline" size="sm" asChild>
-                  <a 
-                    href={`https://crm.rdstation.com/deals/${sinistro.rd_deal_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleSyncRD}
+                    disabled={isSyncing}
                   >
-                    Abrir no RD
-                    <ExternalLink className="ml-2 h-3 w-3" />
-                  </a>
-                </Button>
+                    {isSyncing ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    {sinistro.rd_deal_id ? "Sincronizar" : "Criar Deal"}
+                  </Button>
+                  {sinistro.rd_deal_id && (
+                    <Button variant="outline" size="sm" asChild>
+                      <a 
+                        href={`https://crm.rdstation.com/deals/${sinistro.rd_deal_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Abrir no RD
+                        <ExternalLink className="ml-2 h-3 w-3" />
+                      </a>
+                    </Button>
+                  )}
+                </div>
               </div>
               {sinistro.rd_sync_error && (
                 <div className="mt-2 flex items-start gap-2 text-sm text-destructive">

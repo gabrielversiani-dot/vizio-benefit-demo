@@ -1325,6 +1325,50 @@ export type Database = {
           },
         ]
       }
+      rd_empresa_integrations: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          created_by: string | null
+          empresa_id: string
+          id: string
+          last_sync_at: string | null
+          rd_organization_id: string
+          rd_organization_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          empresa_id: string
+          id?: string
+          last_sync_at?: string | null
+          rd_organization_id: string
+          rd_organization_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          empresa_id?: string
+          id?: string
+          last_sync_at?: string | null
+          rd_organization_id?: string
+          rd_organization_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rd_empresa_integrations_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rd_station_sync_logs: {
         Row: {
           completed_at: string | null

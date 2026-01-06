@@ -70,13 +70,13 @@ interface HistoricoItem {
   demandas?: { titulo: string } | null;
 }
 
-interface EmpresaConfig {
+interface RDIntegrationConfig {
   id: string;
-  nome: string;
-  rd_station_enabled: boolean | null;
-  rd_station_organization_id: string | null;
-  rd_station_org_name_snapshot: string | null;
-  rd_station_last_sync: string | null;
+  empresa_id: string;
+  rd_organization_id: string;
+  rd_organization_name: string | null;
+  ativo: boolean;
+  last_sync_at: string | null;
 }
 
 const Demandas = () => {
@@ -91,18 +91,20 @@ const Demandas = () => {
   const empresaId = empresaSelecionada;
   const empresaAtual = empresas.find(e => e.id === empresaSelecionada);
 
-  // Fetch empresa details with RD config
-  const { data: empresaConfig, refetch: refetchEmpresaConfig } = useQuery({
-    queryKey: ["empresa-rd-config", empresaId],
+  // Fetch RD integration config from new table
+  const { data: rdIntegration, refetch: refetchRDIntegration } = useQuery({
+    queryKey: ["rd-integration-config", empresaId],
     queryFn: async () => {
       if (!empresaId) return null;
       const { data, error } = await supabase
-        .from("empresas")
-        .select("id, nome, rd_station_enabled, rd_station_organization_id, rd_station_org_name_snapshot, rd_station_last_sync")
-        .eq("id", empresaId)
+        .from("rd_empresa_integrations")
+        .select("*")
+        .eq("empresa_id", empresaId)
+        .eq("ativo", true)
         .single();
-      if (error) throw error;
-      return data as EmpresaConfig;
+      
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+      return data as RDIntegrationConfig | null;
     },
     enabled: !!empresaId,
   });
@@ -192,7 +194,7 @@ const Demandas = () => {
     onSuccess: (data) => {
       toast.success(`Sincronização concluída: ${data.imported} novos, ${data.updated} atualizados`);
       refetchDemandas();
-      refetchEmpresaConfig();
+      refetchRDIntegration();
       queryClient.invalidateQueries({ queryKey: ["demandas-historico"] });
     },
     onError: (error: Error) => {
@@ -213,9 +215,9 @@ const Demandas = () => {
     concluidos: demandas.filter((d) => d.status === "concluido").length,
   };
 
-  const rdEnabled = empresaConfig?.rd_station_enabled && empresaConfig?.rd_station_organization_id;
-  const lastSync = empresaConfig?.rd_station_last_sync 
-    ? formatDistanceToNow(new Date(empresaConfig.rd_station_last_sync), { addSuffix: true, locale: ptBR })
+  const rdEnabled = rdIntegration?.ativo && rdIntegration?.rd_organization_id;
+  const lastSync = rdIntegration?.last_sync_at 
+    ? formatDistanceToNow(new Date(rdIntegration.last_sync_at), { addSuffix: true, locale: ptBR })
     : null;
 
   return (
@@ -594,13 +596,13 @@ const Demandas = () => {
       </div>
 
       {/* RD Station Config Modal */}
-      {empresaConfig && (
+      {empresaAtual && (
         <RDStationConfigModal
           open={configModalOpen}
           onOpenChange={setConfigModalOpen}
-          empresa={empresaConfig}
+          empresa={empresaAtual}
           onUpdate={() => {
-            refetchEmpresaConfig();
+            refetchRDIntegration();
             refetchDemandas();
           }}
         />

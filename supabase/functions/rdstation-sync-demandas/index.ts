@@ -134,10 +134,10 @@ serve(async (req) => {
       throw new Error('You do not have permission to sync this empresa');
     }
 
-    // Get empresa with RD Station config
+    // Get empresa name
     const { data: empresa, error: empresaError } = await adminClient
       .from('empresas')
-      .select('id, nome, rd_station_organization_id, rd_station_enabled, rd_station_last_sync')
+      .select('id, nome')
       .eq('id', empresaId)
       .single();
 
@@ -147,8 +147,19 @@ serve(async (req) => {
 
     log(`Empresa: ${empresa.nome} (${empresa.id})`);
 
+    // Get RD integration config from new table
+    const { data: rdConfig, error: rdConfigError } = await adminClient
+      .from('rd_empresa_integrations')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .single();
+
+    if (rdConfigError && rdConfigError.code !== 'PGRST116') {
+      throw new Error(`Failed to get RD config: ${rdConfigError.message}`);
+    }
+
     // Check if RD Station is enabled
-    if (!empresa.rd_station_enabled) {
+    if (!rdConfig || !rdConfig.ativo) {
       log('RD Station integration not enabled');
       return new Response(JSON.stringify({
         success: false,
@@ -162,7 +173,7 @@ serve(async (req) => {
     }
 
     // Check if organization is mapped
-    if (!empresa.rd_station_organization_id) {
+    if (!rdConfig.rd_organization_id) {
       log('Company not linked to RD Station organization');
       return new Response(JSON.stringify({
         success: false,
@@ -175,7 +186,7 @@ serve(async (req) => {
       });
     }
 
-    const rdOrgId = empresa.rd_station_organization_id;
+    const rdOrgId = rdConfig.rd_organization_id;
     log(`RD Organization ID: ${rdOrgId}`);
 
     // Create sync log entry
@@ -397,7 +408,13 @@ serve(async (req) => {
         .eq('id', syncLogId);
     }
 
-    // Update last sync time
+    // Update last sync time in new table
+    await adminClient
+      .from('rd_empresa_integrations')
+      .update({ last_sync_at: new Date().toISOString() })
+      .eq('empresa_id', empresaId);
+
+    // Also update legacy field for backward compatibility
     await adminClient
       .from('empresas')
       .update({ rd_station_last_sync: new Date().toISOString() })

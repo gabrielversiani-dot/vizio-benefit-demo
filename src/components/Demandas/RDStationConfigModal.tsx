@@ -1,13 +1,15 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Search, Building2, Link2, Unlink, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, Search, Building2, Link2, Unlink, CheckCircle2, AlertTriangle, Building } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useEmpresa } from "@/contexts/EmpresaContext";
 
 interface RDOrganization {
   id: string;
@@ -18,9 +20,13 @@ interface RDOrganization {
 interface Empresa {
   id: string;
   nome: string;
-  rd_station_enabled?: boolean | null;
-  rd_station_organization_id?: string | null;
-  rd_station_org_name_snapshot?: string | null;
+}
+
+interface RDIntegration {
+  empresa_id: string;
+  rd_organization_id: string;
+  rd_organization_name: string | null;
+  ativo: boolean;
 }
 
 interface RDStationConfigModalProps {
@@ -31,6 +37,8 @@ interface RDStationConfigModalProps {
 }
 
 export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: RDStationConfigModalProps) {
+  const { empresas, isAdminVizio } = useEmpresa();
+  
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -39,24 +47,58 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
   const [enabled, setEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsToken, setNeedsToken] = useState(false);
+  
+  // Multi-empresa selection
+  const [selectedEmpresas, setSelectedEmpresas] = useState<string[]>([]);
+  const [currentIntegration, setCurrentIntegration] = useState<RDIntegration | null>(null);
+  const [loadingIntegration, setLoadingIntegration] = useState(false);
 
+  // Load current integration when modal opens
   useEffect(() => {
     if (empresa && open) {
-      setEnabled(empresa.rd_station_enabled || false);
-      if (empresa.rd_station_organization_id) {
-        setSelectedOrg({
-          id: empresa.rd_station_organization_id,
-          name: empresa.rd_station_org_name_snapshot || 'Organização vinculada',
-        });
-      } else {
-        setSelectedOrg(null);
-      }
-      setError(null);
-      setNeedsToken(false);
-      setOrganizations([]);
-      setSearchQuery("");
+      loadCurrentIntegration();
     }
   }, [empresa, open]);
+
+  const loadCurrentIntegration = async () => {
+    if (!empresa) return;
+    
+    setLoadingIntegration(true);
+    setError(null);
+    setNeedsToken(false);
+    setOrganizations([]);
+    setSearchQuery("");
+    setSelectedEmpresas([empresa.id]); // Always include current empresa
+
+    try {
+      const { data, error } = await supabase
+        .from("rd_empresa_integrations")
+        .select("*")
+        .eq("empresa_id", empresa.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+        throw error;
+      }
+
+      if (data) {
+        setCurrentIntegration(data);
+        setEnabled(data.ativo);
+        setSelectedOrg({
+          id: data.rd_organization_id,
+          name: data.rd_organization_name || 'Organização vinculada',
+        });
+      } else {
+        setCurrentIntegration(null);
+        setEnabled(false);
+        setSelectedOrg(null);
+      }
+    } catch (err) {
+      console.error('Error loading integration:', err);
+    } finally {
+      setLoadingIntegration(false);
+    }
+  };
 
   const searchOrganizations = async () => {
     if (!searchQuery.trim()) {
@@ -102,32 +144,52 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
   };
 
   const handleSave = async () => {
-    if (!empresa) return;
+    if (!empresa || !selectedOrg) return;
     
     setSaving(true);
     setError(null);
 
     try {
       const { data: session } = await supabase.auth.getSession();
-      const { data, error: fnError } = await supabase.functions.invoke('rdstation-link-empresa', {
-        headers: {
-          Authorization: `Bearer ${session.session?.access_token}`,
-        },
-        body: {
-          empresaId: empresa.id,
-          rdOrganizationId: selectedOrg?.id || null,
-          rdOrganizationName: selectedOrg?.name || null,
-          enabled,
-        },
-      });
+      const { data: userData } = await supabase.auth.getUser();
+      
+      // For each selected empresa, upsert the integration
+      const empresasToLink = [...new Set([empresa.id, ...selectedEmpresas])]; // Ensure current empresa is always included
+      
+      for (const empresaId of empresasToLink) {
+        const { error: upsertError } = await supabase
+          .from("rd_empresa_integrations")
+          .upsert({
+            empresa_id: empresaId,
+            rd_organization_id: selectedOrg.id,
+            rd_organization_name: selectedOrg.name,
+            ativo: enabled,
+            created_by: userData.user?.id,
+          }, {
+            onConflict: 'empresa_id',
+          });
 
-      if (fnError) throw fnError;
-
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao salvar configuração');
+        if (upsertError) {
+          throw new Error(`Erro ao vincular empresa ${empresaId}: ${upsertError.message}`);
+        }
       }
 
-      toast.success('Configuração do RD Station salva com sucesso!');
+      // Also update the legacy fields in empresas table for backward compatibility
+      await supabase
+        .from("empresas")
+        .update({
+          rd_station_organization_id: selectedOrg.id,
+          rd_station_org_name_snapshot: selectedOrg.name,
+          rd_station_enabled: enabled,
+        })
+        .in("id", empresasToLink);
+
+      const empresasNames = empresasToLink.map(id => {
+        const emp = empresas.find(e => e.id === id);
+        return emp?.nome || id;
+      });
+      
+      toast.success(`RD Station vinculado em: ${empresasNames.join(', ')}`);
       onUpdate();
       onOpenChange(false);
     } catch (err: unknown) {
@@ -140,9 +202,83 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
     }
   };
 
-  const handleUnlink = () => {
-    setSelectedOrg(null);
+  const handleUnlink = async () => {
+    if (!empresa) return;
+    
+    setSaving(true);
+    setError(null);
+
+    try {
+      // Delete only the current empresa's integration
+      const { error: deleteError } = await supabase
+        .from("rd_empresa_integrations")
+        .delete()
+        .eq("empresa_id", empresa.id);
+
+      if (deleteError) throw deleteError;
+
+      // Clear legacy fields
+      await supabase
+        .from("empresas")
+        .update({
+          rd_station_organization_id: null,
+          rd_station_org_name_snapshot: null,
+          rd_station_enabled: false,
+        })
+        .eq("id", empresa.id);
+
+      setSelectedOrg(null);
+      setCurrentIntegration(null);
+      setEnabled(false);
+      
+      toast.success(`${empresa.nome} desvinculada do RD Station`);
+      onUpdate();
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao desvincular';
+      console.error('Unlink error:', err);
+      setError(errorMessage);
+      toast.error('Erro ao desvincular');
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const handleEmpresaToggle = (empresaId: string, checked: boolean) => {
+    if (empresaId === empresa?.id) return; // Cannot uncheck current empresa
+    
+    setSelectedEmpresas(prev => {
+      if (checked) {
+        return [...prev, empresaId];
+      } else {
+        return prev.filter(id => id !== empresaId);
+      }
+    });
+  };
+
+  // Filter empresas that admin can manage
+  const availableEmpresas = isAdminVizio 
+    ? empresas.filter(e => e.id !== empresa?.id)
+    : [];
+
+  const linkedEmpresasNames = [...new Set([empresa?.id, ...selectedEmpresas])]
+    .filter(Boolean)
+    .map(id => {
+      const emp = empresas.find(e => e.id === id);
+      return emp?.nome;
+    })
+    .filter(Boolean);
+
+  if (loadingIntegration) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-lg">
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -193,8 +329,8 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
                     <p className="text-sm text-muted-foreground">Organização vinculada</p>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={handleUnlink}>
-                  <Unlink className="h-4 w-4 mr-1" />
+                <Button variant="outline" size="sm" onClick={handleUnlink} disabled={saving}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlink className="h-4 w-4 mr-1" />}
                   Desvincular
                 </Button>
               </div>
@@ -254,6 +390,44 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
             </div>
           )}
 
+          {/* Multi-empresa selection (only for admin_vizio with selected org) */}
+          {selectedOrg && isAdminVizio && availableEmpresas.length > 0 && (
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Building className="h-4 w-4" />
+                Vincular também em outras empresas (opcional)
+              </Label>
+              <ScrollArea className="h-32 rounded-md border">
+                <div className="p-3 space-y-2">
+                  {availableEmpresas.map((emp) => (
+                    <div key={emp.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`empresa-${emp.id}`}
+                        checked={selectedEmpresas.includes(emp.id)}
+                        onCheckedChange={(checked) => handleEmpresaToggle(emp.id, checked as boolean)}
+                      />
+                      <label
+                        htmlFor={`empresa-${emp.id}`}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        {emp.nome}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+
+          {/* Summary before save */}
+          {selectedOrg && linkedEmpresasNames.length > 0 && (
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
+              <p className="text-sm text-blue-800">
+                <strong>Resumo:</strong> Você está vinculando a organização <strong>{selectedOrg.name}</strong> em: {linkedEmpresasNames.join(', ')}
+              </p>
+            </div>
+          )}
+
           {/* Error message */}
           {error && !needsToken && (
             <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3">
@@ -262,15 +436,15 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
           )}
         </div>
 
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving || !selectedOrg}>
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Salvar
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

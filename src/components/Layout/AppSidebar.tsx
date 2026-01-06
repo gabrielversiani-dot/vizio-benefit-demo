@@ -14,7 +14,7 @@ import {
 import { usePermissions } from "@/hooks/usePermissions";
 import { BrandLogo } from "@/components/Brand/BrandLogo";
 
-// Menu items for all users (clients see only these)
+// Menu items for all users (clients and admins)
 const clientMenuItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
   { icon: DollarSign, label: "Faturamento", href: "/faturamento" },
@@ -22,22 +22,21 @@ const clientMenuItems = [
   { icon: Shield, label: "Sinistros Vida", href: "/sinistros-vida" },
   { icon: FileSignature, label: "Contratos", href: "/contratos" },
   { icon: Heart, label: "Promoção de Saúde", href: "/promocao-saude" },
+  { icon: ClipboardList, label: "Demandas", href: "/demandas" },
   { icon: FileText, label: "Relatórios", href: "/relatorios" },
 ];
 
-// Modules "Em desenvolvimento" for clients
+// Modules "Em desenvolvimento" for clients (features not yet available)
 const comingSoonItems = [
   { icon: Users, label: "Beneficiários", href: "/coming-soon/beneficiarios" },
   { icon: RefreshCw, label: "Movimentação de Vidas", href: "/coming-soon/movimentacao-vidas" },
-  { icon: ClipboardList, label: "Demandas", href: "/coming-soon/demandas" },
 ];
 
-// Admin-only menu items (full access)
+// Admin-only menu items (additional features)
 const adminMenuItems = [
   { icon: Users, label: "Beneficiários", href: "/beneficiarios" },
   { icon: RefreshCw, label: "Movimentação de Vidas", href: "/movimentacao-vidas" },
   { icon: Bot, label: "Central de Importação", href: "/admin/importacao" },
-  { icon: ClipboardList, label: "Demandas", href: "/demandas" },
 ];
 
 // Super admin items (admin_vizio only)

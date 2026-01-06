@@ -13,7 +13,10 @@ import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useEmpresa } from "@/contexts/EmpresaContext";
 import { RDStationConfigModal } from "@/components/Demandas/RDStationConfigModal";
+import { DemandaDetailModal } from "@/components/Demandas/DemandaDetailModal";
+import { HistoricoGeralTimeline } from "@/components/Demandas/HistoricoGeralTimeline";
 import { toast } from "sonner";
+import { formatSLA, calculateSLASeconds } from "@/lib/formatSLA";
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   pendente: { label: "Pendente", color: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30" },
@@ -53,21 +56,12 @@ interface Demanda {
   prioridade: string;
   prazo: string | null;
   created_at: string;
+  concluida_em?: string | null;
   source: string;
+  descricao?: string | null;
   rd_deal_name?: string | null;
   responsavel_nome?: string | null;
-}
-
-interface HistoricoItem {
-  id: string;
-  demanda_id: string;
-  tipo_evento: string | null;
-  status_anterior: string | null;
-  status_novo: string | null;
-  descricao: string | null;
-  usuario_nome: string | null;
-  created_at: string;
-  demandas?: { titulo: string } | null;
+  empresa_id: string;
 }
 
 interface LinkedRDOrg {
@@ -83,6 +77,8 @@ const Demandas = () => {
   const [filtroTipo, setFiltroTipo] = useState<string>("todos");
   const [filtroSource, setFiltroSource] = useState<string>("todos");
   const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [selectedDemanda, setSelectedDemanda] = useState<Demanda | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
   const queryClient = useQueryClient();
 
   // empresaSelecionada is the ID (string), empresaAtual is the object
@@ -154,24 +150,6 @@ const Demandas = () => {
     enabled: !!empresaId,
   });
 
-  // Fetch historico
-  const { data: historico = [], isLoading: isLoadingHistorico } = useQuery({
-    queryKey: ["demandas-historico", empresaId],
-    queryFn: async () => {
-      if (!empresaId) return [];
-      
-      const { data, error } = await supabase
-        .from("demandas_historico")
-        .select("*, demandas(titulo)")
-        .eq("empresa_id", empresaId)
-        .order("created_at", { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      return data as HistoricoItem[];
-    },
-    enabled: !!empresaId,
-  });
 
   // Sync mutation
   const syncMutation = useMutation({
@@ -519,7 +497,14 @@ const Demandas = () => {
                               {format(new Date(demanda.created_at), "dd/MM/yyyy", { locale: ptBR })}
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button variant="ghost" size="sm">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedDemanda(demanda);
+                                  setDetailModalOpen(true);
+                                }}
+                              >
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </TableCell>
@@ -534,76 +519,7 @@ const Demandas = () => {
           </TabsContent>
 
           <TabsContent value="historico">
-            <Card>
-              <CardHeader>
-                <CardTitle>Histórico / Prestação de Contas</CardTitle>
-                <CardDescription>
-                  Timeline de todas as alterações e atividades nas demandas
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isLoadingHistorico ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  </div>
-                ) : historico.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Nenhum histórico disponível
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {historico.map((item) => (
-                      <div key={item.id} className="flex gap-4 p-4 border rounded-lg">
-                        <div className="flex-shrink-0">
-                          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                            {item.tipo_evento === 'sync' ? (
-                              <RefreshCw className="h-4 w-4 text-purple-500" />
-                            ) : item.tipo_evento === 'status_change' ? (
-                              <AlertCircle className="h-4 w-4 text-blue-500" />
-                            ) : (
-                              <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium truncate">
-                              {item.demandas?.titulo || 'Demanda removida'}
-                            </span>
-                            {item.tipo_evento === 'sync' && (
-                              <Badge variant="secondary" className="bg-purple-100 text-purple-700">
-                                Sincronização
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {item.descricao || 'Atualização registrada'}
-                          </p>
-                          {item.status_anterior && item.status_novo && (
-                            <div className="flex items-center gap-2 mt-2">
-                              <Badge variant="outline" className="text-xs">
-                                {statusConfig[item.status_anterior]?.label || item.status_anterior}
-                              </Badge>
-                              <span className="text-muted-foreground">→</span>
-                              <Badge variant="outline" className="text-xs">
-                                {statusConfig[item.status_novo]?.label || item.status_novo}
-                              </Badge>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                            <span>{item.usuario_nome || 'Sistema'}</span>
-                            <span>•</span>
-                            <span>
-                              {format(new Date(item.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <HistoricoGeralTimeline empresaId={empresaId} />
           </TabsContent>
         </Tabs>
       </div>
@@ -621,6 +537,13 @@ const Demandas = () => {
           }}
         />
       )}
+
+      {/* Demanda Detail Modal */}
+      <DemandaDetailModal
+        open={detailModalOpen}
+        onOpenChange={setDetailModalOpen}
+        demanda={selectedDemanda}
+      />
     </AppLayout>
   );
 };

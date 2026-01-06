@@ -572,51 +572,71 @@ serve(async (req) => {
       });
     }
 
-    // Get pipelines from RD
-    console.log(`[${requestId}] Fetching pipelines from RD Station`);
-    const pipelinesResp = await fetch(`${RD_API_BASE}/deal_pipelines?token=${rdToken}`);
-    if (!pipelinesResp.ok) {
-      const errText = await pipelinesResp.text();
-      console.error(`[${requestId}] Failed to fetch pipelines:`, errText);
-      throw new Error('Failed to fetch pipelines from RD Station');
-    }
-    
-    const pipelinesData = await pipelinesResp.json();
-    const pipeline = pipelinesData.deal_pipelines?.find(
-      (p: { name: string }) => p.name.toLowerCase().includes('sinistro')
-    );
+    // Get pipeline config from database for this empresa (avoid env-based IDs)
+    const { data: pipelineConfig, error: configError } = await adminClient
+      .from('empresa_rd_sinistro_config')
+      .select('*')
+      .eq('empresa_id', sinistro.empresa_id)
+      .single();
 
-    if (!pipeline) {
-      console.error(`[${requestId}] Pipeline "${PIPELINE_NAME}" not found`);
-      
+    if (configError || !pipelineConfig) {
+      console.log(`[${requestId}] No pipeline config found for empresa ${sinistro.empresa_id}`);
+
       await adminClient
         .from('sinistros_vida')
         .update({
           rd_sync_status: 'error',
-          rd_sync_error: `Pipeline "${PIPELINE_NAME}" não encontrado no RD Station`,
+          rd_sync_error: 'Pipeline de sinistros não configurado',
         })
         .eq('id', sinistroId);
 
       return new Response(JSON.stringify({
         success: false,
-        error: `Pipeline "${PIPELINE_NAME}" not found. Please create it in RD Station.`,
-        code: 'no_pipeline',
+        error: 'Pipeline de sinistros não configurado. Configure o funil nas configurações de integração RD Station.',
+        code: 'no_pipeline_config',
+        needsSetup: true,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       });
     }
 
-    console.log(`[${requestId}] Using pipeline: ${pipeline.name} (${pipeline._id})`);
+    const pipelineId = pipelineConfig.sinistro_pipeline_id;
+    console.log(`[${requestId}] Using configured pipeline: ${pipelineConfig.sinistro_pipeline_name} (${pipelineId})`);
 
-    const stages = pipeline.deal_stages || [];
-    const targetStageIndex = STATUS_TO_STAGE[sinistro.status] || 0;
-    const targetStage = stages[Math.min(targetStageIndex, stages.length - 1)];
+    // Fetch stages for this pipeline (so we can map status -> stage by index)
+    const stagesResp = await fetch(`${RD_API_BASE}/deal_stages?token=${rdToken}&deal_pipeline_id=${pipelineId}`);
+    let stagesPayload: any = null;
 
-    if (!targetStage) {
-      throw new Error('No stages found in pipeline');
+    if (stagesResp.ok) {
+      stagesPayload = await stagesResp.json();
+    } else {
+      // Fallback: endpoint might not support filtering, fetch all and filter locally
+      const fallbackResp = await fetch(`${RD_API_BASE}/deal_stages?token=${rdToken}`);
+      if (!fallbackResp.ok) {
+        const errText = await fallbackResp.text();
+        console.error(`[${requestId}] Failed to fetch stages:`, errText);
+        throw new Error('Failed to fetch stages from RD Station');
+      }
+      stagesPayload = await fallbackResp.json();
     }
 
+    const allStages = stagesPayload.deal_stages || stagesPayload.stages || [];
+
+    const pipelineStages = allStages
+      .filter((s: any) => (s.deal_pipeline_id || s.deal_pipeline?._id || s.deal_pipeline?.id || s.pipeline_id) === pipelineId || allStages.length <= 20)
+      .sort((a: any, b: any) => (a.position ?? a.order ?? 0) - (b.position ?? b.order ?? 0));
+
+    const targetStageIndex = STATUS_TO_STAGE[sinistro.status] ?? 0;
+    const targetStage = pipelineStages[Math.min(targetStageIndex, Math.max(pipelineStages.length - 1, 0))];
+
+    if (!targetStage) {
+      throw new Error('No stages found in configured pipeline');
+    }
+
+    console.log(`[${requestId}] Target stage for status "${sinistro.status}": ${targetStage.name} (${targetStage._id})`);
+
+    const pipeline = { _id: pipelineId, name: pipelineConfig.sinistro_pipeline_name || 'Pipeline configurado' };
     let dealId = sinistro.rd_deal_id;
     let syncResult: { created: boolean; dealId: string };
 

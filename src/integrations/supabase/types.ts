@@ -590,27 +590,39 @@ export type Database = {
           created_at: string
           criado_por: string
           demanda_id: string
+          descricao: string | null
+          empresa_id: string | null
           id: string
           status_anterior: Database["public"]["Enums"]["status_demanda"] | null
           status_novo: Database["public"]["Enums"]["status_demanda"] | null
+          tipo_evento: string | null
+          usuario_nome: string | null
         }
         Insert: {
           comentario?: string | null
           created_at?: string
           criado_por: string
           demanda_id: string
+          descricao?: string | null
+          empresa_id?: string | null
           id?: string
           status_anterior?: Database["public"]["Enums"]["status_demanda"] | null
           status_novo?: Database["public"]["Enums"]["status_demanda"] | null
+          tipo_evento?: string | null
+          usuario_nome?: string | null
         }
         Update: {
           comentario?: string | null
           created_at?: string
           criado_por?: string
           demanda_id?: string
+          descricao?: string | null
+          empresa_id?: string | null
           id?: string
           status_anterior?: Database["public"]["Enums"]["status_demanda"] | null
           status_novo?: Database["public"]["Enums"]["status_demanda"] | null
+          tipo_evento?: string | null
+          usuario_nome?: string | null
         }
         Relationships: [
           {
@@ -618,6 +630,13 @@ export type Database = {
             columns: ["demanda_id"]
             isOneToOne: false
             referencedRelation: "demandas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "demandas_historico_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
         ]

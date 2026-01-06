@@ -87,27 +87,41 @@ export default function Auth() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="relative flex items-center justify-center rounded-lg bg-muted dark:bg-transparent p-2">
+        <div className="flex flex-col items-center justify-center mb-8">
+          <div className="relative flex items-center justify-center p-2">
+            {/* Dark mode: white text logo */}
             <img 
-              src="/branding/vizio-logo.jpeg" 
+              src="/branding/vizio-logo.png" 
               alt="Vizio Capital" 
               loading="lazy"
-              className="h-12 w-auto object-contain"
+              className="hidden dark:block h-16 w-auto object-contain"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.style.display = 'none';
-                const fallback = target.nextElementSibling as HTMLElement;
+              }}
+            />
+            {/* Light mode: dark text logo */}
+            <img 
+              src="/branding/vizio-logo-dark.png" 
+              alt="Vizio Capital" 
+              loading="lazy"
+              className="block dark:hidden h-16 w-auto object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                const fallback = document.getElementById('auth-logo-fallback');
                 if (fallback) fallback.style.display = 'flex';
               }}
             />
-            <div className="hidden h-12 w-12 items-center justify-center rounded-lg bg-primary">
-              <Activity className="h-7 w-7 text-primary-foreground" />
+            <div id="auth-logo-fallback" className="hidden items-center gap-3">
+              <div className="h-12 w-12 flex items-center justify-center rounded-lg bg-primary">
+                <Activity className="h-7 w-7 text-primary-foreground" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold">Vizio Capital</h1>
+                <p className="text-sm text-muted-foreground">Gestão de Benefícios</p>
+              </div>
             </div>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">Vizio Capital</h1>
-            <p className="text-sm text-muted-foreground">Gestão de Benefícios</p>
           </div>
         </div>
 

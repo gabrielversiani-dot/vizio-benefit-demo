@@ -176,71 +176,88 @@ serve(async (req) => {
 
       console.log(`[${requestId}] Found ${linkedOrgs.length} linked organizations`);
 
-      // Get the Sinistro pipeline
-      // Check if pipeline ID is configured in secrets
-      const configuredPipelineId = Deno.env.get('RD_SINISTRO_PIPELINE_ID');
-      
-      console.log(`[${requestId}] Fetching pipelines from RD Station`);
-      const pipelinesResp = await fetch(`${RD_API_BASE}/deal_pipelines?token=${rdToken}`);
-      if (!pipelinesResp.ok) {
-        const errText = await pipelinesResp.text();
-        console.error(`[${requestId}] Failed to fetch pipelines:`, errText);
-        throw new Error('Failed to fetch pipelines from RD Station');
-      }
+      // Get pipeline config from database for this empresa
+      const { data: pipelineConfig, error: configError } = await adminClient
+        .from('empresa_rd_sinistro_config')
+        .select('*')
+        .eq('empresa_id', empresaId)
+        .single();
 
-      const pipelinesData = await pipelinesResp.json();
-      const allPipelines = pipelinesData.deal_pipelines || [];
-      
-      // Log all available pipelines for debugging
-      console.log(`[${requestId}] Available pipelines in RD Station:`);
-      allPipelines.forEach((p: { _id: string; name: string }) => {
-        console.log(`[${requestId}]   - ${p.name} (ID: ${p._id})`);
-      });
-      
-      // Find pipeline: by configured ID, or by name containing 'sinistro' or 'vida'
-      let pipeline = null;
-      
-      if (configuredPipelineId) {
-        pipeline = allPipelines.find((p: { _id: string }) => p._id === configuredPipelineId);
-        if (pipeline) {
-          console.log(`[${requestId}] Using configured pipeline: ${pipeline.name} (${pipeline._id})`);
-        }
-      }
-      
-      if (!pipeline) {
-        // Try to find by name patterns
-        pipeline = allPipelines.find((p: { name: string }) => 
-          p.name.toLowerCase().includes('sinistro')
-        );
-      }
-      
-      if (!pipeline) {
-        pipeline = allPipelines.find((p: { name: string }) => 
-          p.name.toLowerCase().includes('vida')
-        );
-      }
-
-      if (!pipeline) {
-        const pipelineNames = allPipelines.map((p: { name: string }) => p.name).join(', ');
-        console.error(`[${requestId}] Pipeline for Sinistros Vida not found. Available: ${pipelineNames}`);
+      if (configError || !pipelineConfig) {
+        console.log(`[${requestId}] No pipeline config found for empresa ${empresaId}`);
         return new Response(JSON.stringify({
           success: false,
-          error: `Pipeline para Sinistros Vida não encontrado. Configure RD_SINISTRO_PIPELINE_ID ou crie um funil com "Sinistro" ou "Vida" no nome. Disponíveis: ${pipelineNames}`,
-          code: 'no_pipeline',
-          availablePipelines: allPipelines.map((p: { _id: string; name: string }) => ({ id: p._id, name: p.name })),
+          error: 'Pipeline de sinistros não configurado. Configure o funil nas configurações de integração RD Station.',
+          code: 'no_pipeline_config',
+          needsSetup: true,
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400,
         });
       }
 
-      console.log(`[${requestId}] Using pipeline: ${pipeline.name} (${pipeline._id})`);
+      console.log(`[${requestId}] Using configured pipeline: ${pipelineConfig.sinistro_pipeline_name} (${pipelineConfig.sinistro_pipeline_id})`);
 
-      const stages = pipeline.deal_stages || [];
+      // Fetch stages for this pipeline from RD to build stageIdToIndex map
+      console.log(`[${requestId}] Fetching stages from RD Station`);
+      const stagesResp = await fetch(`${RD_API_BASE}/deal_stages?token=${rdToken}`);
+      if (!stagesResp.ok) {
+        throw new Error('Failed to fetch stages from RD Station');
+      }
+      const stagesData = await stagesResp.json();
+      const allStages = stagesData.deal_stages || [];
+      
+      // Filter stages for this pipeline and sort by position
+      const pipelineStages = allStages
+        .filter((s: { deal_pipeline_id?: string }) => s.deal_pipeline_id === pipelineConfig.sinistro_pipeline_id)
+        .sort((a: { position?: number; order?: number }, b: { position?: number; order?: number }) => 
+          (a.position ?? a.order ?? 0) - (b.position ?? b.order ?? 0)
+        );
+
+      // Create stage ID to index mapping
       const stageIdToIndex: Record<string, number> = {};
-      stages.forEach((stage: { _id: string }, index: number) => {
+      pipelineStages.forEach((stage: { _id: string }, index: number) => {
         stageIdToIndex[stage._id] = index;
       });
+
+      // Also create a mapping based on stage names for status mapping
+      const stageIdToStatus: Record<string, string> = {};
+      for (const stage of pipelineStages) {
+        const stageName = (stage.name || '').toLowerCase();
+        if (stage._id === pipelineConfig.sinistro_stage_inicial_id) {
+          stageIdToStatus[stage._id] = 'em_analise';
+        } else if (pipelineConfig.sinistro_stage_em_andamento_id && stage._id === pipelineConfig.sinistro_stage_em_andamento_id) {
+          stageIdToStatus[stage._id] = 'em_andamento';
+        } else if (pipelineConfig.sinistro_stage_concluido_id && stage._id === pipelineConfig.sinistro_stage_concluido_id) {
+          stageIdToStatus[stage._id] = 'concluido';
+        } else if (stageName.includes('pago')) {
+          stageIdToStatus[stage._id] = 'pago';
+        } else if (stageName.includes('negado') || stageName.includes('recusa')) {
+          stageIdToStatus[stage._id] = 'negado';
+        } else if (stageName.includes('operadora') || stageName.includes('enviado')) {
+          stageIdToStatus[stage._id] = 'enviado_operadora';
+        } else if (stageName.includes('documento') || stageName.includes('pendente')) {
+          stageIdToStatus[stage._id] = 'pendente_documentos';
+        } else if (stageName.includes('andamento') || stageName.includes('análise') || stageName.includes('analise')) {
+          stageIdToStatus[stage._id] = 'em_andamento';
+        } else if (stageName.includes('aprovado')) {
+          stageIdToStatus[stage._id] = 'aprovado';
+        } else if (stageName.includes('conclu')) {
+          stageIdToStatus[stage._id] = 'concluido';
+        } else {
+          // Default based on position
+          const idx = stageIdToIndex[stage._id] || 0;
+          stageIdToStatus[stage._id] = STAGE_INDEX_TO_STATUS[idx] || 'em_analise';
+        }
+      }
+
+      console.log(`[${requestId}] Stage mappings:`, Object.keys(stageIdToStatus).length);
+
+      // Use pipeline from config
+      const pipeline = { 
+        _id: pipelineConfig.sinistro_pipeline_id, 
+        name: pipelineConfig.sinistro_pipeline_name 
+      };
 
       // Collect all deals from all linked organizations
       const allDeals: (RDDeal & { rdOrgId: string })[] = [];
@@ -292,8 +309,11 @@ serve(async (req) => {
 
       for (const deal of allDeals) {
         try {
-          const stageIndex = deal.deal_stage?._id ? (stageIdToIndex[deal.deal_stage._id] ?? 0) : 0;
-          const mappedStatus = mapStageToStatus(stageIndex);
+          // Get status from stage using configured mappings
+          const stageId = deal.deal_stage?._id;
+          const mappedStatus = stageId && stageIdToStatus[stageId] 
+            ? stageIdToStatus[stageId] 
+            : 'em_analise';
           const isFinal = FINAL_STATUSES.includes(mappedStatus);
 
           // Extract info from deal

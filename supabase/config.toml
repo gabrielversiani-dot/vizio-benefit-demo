@@ -69,3 +69,6 @@ verify_jwt = false
 
 [functions.seed-demo-data]
 verify_jwt = false
+
+[functions.rd-discover-sinistro-pipeline]
+verify_jwt = false

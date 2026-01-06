@@ -615,6 +615,10 @@ export type Database = {
           is_demo: boolean
           nome: string
           razao_social: string | null
+          rd_station_enabled: boolean
+          rd_station_last_sync: string | null
+          rd_station_org_name_snapshot: string | null
+          rd_station_organization_id: string | null
           updated_at: string
         }
         Insert: {
@@ -627,6 +631,10 @@ export type Database = {
           is_demo?: boolean
           nome: string
           razao_social?: string | null
+          rd_station_enabled?: boolean
+          rd_station_last_sync?: string | null
+          rd_station_org_name_snapshot?: string | null
+          rd_station_organization_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -639,6 +647,10 @@ export type Database = {
           is_demo?: boolean
           nome?: string
           razao_social?: string | null
+          rd_station_enabled?: boolean
+          rd_station_last_sync?: string | null
+          rd_station_org_name_snapshot?: string | null
+          rd_station_organization_id?: string | null
           updated_at?: string
         }
         Relationships: []

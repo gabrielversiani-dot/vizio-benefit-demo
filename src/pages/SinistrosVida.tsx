@@ -11,24 +11,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { 
   Shield, 
   TrendingUp, 
@@ -43,9 +25,11 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { SinistroDetailModal } from "@/components/SinistrosVida/SinistroDetailModal";
+import { SinistroFormModal } from "@/components/SinistrosVida/SinistroFormModal";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresa } from "@/contexts/EmpresaContext";
+import { usePermissions } from "@/hooks/usePermissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
@@ -53,9 +37,11 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   aprovado: { label: "Aprovado", color: "bg-success text-success-foreground" },
   pago: { label: "Pago", color: "bg-chart-2 text-white" },
   em_analise: { label: "Em Análise", color: "bg-warning text-warning-foreground" },
-  aguardando_docs: { label: "Aguardando Docs", color: "bg-chart-3 text-white" },
-  em_pagamento: { label: "Em Pagamento", color: "bg-chart-1 text-white" },
+  pendente_documentos: { label: "Pendente Docs", color: "bg-chart-3 text-white" },
+  em_andamento: { label: "Em Andamento", color: "bg-chart-1 text-white" },
+  enviado_operadora: { label: "Enviado Operadora", color: "bg-chart-4 text-white" },
   negado: { label: "Negado", color: "bg-destructive text-destructive-foreground" },
+  concluido: { label: "Concluído", color: "bg-success text-success-foreground" },
 };
 
 const tipoSinistroConfig: Record<string, { label: string; color: string }> = {
@@ -70,10 +56,11 @@ const CHART_COLORS = ['#ef4444', '#f97316', '#eab308', '#8b5cf6', '#22c55e'];
 
 export default function SinistrosVida() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedSinistro, setSelectedSinistro] = useState<any>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const { empresaSelecionada, isAdminVizio } = useEmpresa();
+  const { canManageSinistrosVida } = usePermissions();
 
   // Fetch sinistros from database
   const { data: sinistros = [], isLoading } = useQuery({
@@ -185,91 +172,16 @@ export default function SinistrosVida() {
               Gestão completa de sinistros de seguro de vida em grupo
             </p>
           </div>
-          {isAdminVizio && (
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Novo Sinistro
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>Registrar Novo Sinistro</DialogTitle>
-                  <DialogDescription>
-                    Preencha as informações do sinistro de vida em grupo
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="beneficiario">Beneficiário</Label>
-                      <Input id="beneficiario" placeholder="Nome completo" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cpf">CPF</Label>
-                      <Input id="cpf" placeholder="000.000.000-00" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="empresa">Empresa</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione a empresa" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {empresas.map((empresa) => (
-                          <SelectItem key={empresa.id} value={empresa.id}>
-                            {empresa.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="evento">Tipo de Evento</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="morte_natural">Morte Natural</SelectItem>
-                          <SelectItem value="morte_acidental">Morte Acidental</SelectItem>
-                          <SelectItem value="invalidez">Invalidez Permanente</SelectItem>
-                          <SelectItem value="doenca_grave">Doença Grave</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="dataEvento">Data do Evento</Label>
-                      <Input id="dataEvento" type="date" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="valor">Valor da Indenização (R$)</Label>
-                    <Input id="valor" type="number" placeholder="0,00" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="observacoes">Observações</Label>
-                    <Textarea 
-                      id="observacoes" 
-                      placeholder="Detalhes adicionais sobre o sinistro..."
-                      rows={4}
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={() => setIsDialogOpen(false)}>
-                    Registrar Sinistro
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+          {canManageSinistrosVida && (
+            <Button className="gap-2" onClick={() => setIsFormOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Novo Sinistro
+            </Button>
           )}
+        </div>
+
+        {/* Form Modal */}
+        <SinistroFormModal open={isFormOpen} onOpenChange={setIsFormOpen} />
         </div>
 
         {/* KPIs */}

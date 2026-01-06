@@ -1434,6 +1434,42 @@ export type Database = {
           },
         ]
       }
+      rd_webhook_events: {
+        Row: {
+          created_at: string
+          error: string | null
+          event_id: string
+          event_type: string | null
+          id: string
+          payload: Json
+          processed_at: string | null
+          provider: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          event_id: string
+          event_type?: string | null
+          id?: string
+          payload: Json
+          processed_at?: string | null
+          provider?: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          event_id?: string
+          event_type?: string | null
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          provider?: string
+          status?: string
+        }
+        Relationships: []
+      }
       sinistralidade: {
         Row: {
           categoria: Database["public"]["Enums"]["categoria_beneficio"]
@@ -1730,8 +1766,10 @@ export type Database = {
       }
       sinistros_vida: {
         Row: {
+          aberto_por_role: string | null
           beneficiario_cpf: string | null
           beneficiario_nome: string
+          concluido_em: string | null
           created_at: string
           criado_por: string
           data_comunicacao: string | null
@@ -1739,14 +1777,29 @@ export type Database = {
           empresa_id: string
           id: string
           observacoes: string | null
+          prioridade: string | null
+          rd_deal_id: string | null
+          rd_last_sync_at: string | null
+          rd_org_id: string | null
+          rd_owner_id: string | null
+          rd_pipeline_id: string | null
+          rd_stage_id: string | null
+          rd_sync_error: string | null
+          rd_sync_status: string | null
+          responsavel_id: string | null
+          sla_minutos: number | null
           status: string
+          subestipulante_filial_id: string | null
           tipo_sinistro: string
           updated_at: string
+          valor_estimado: number | null
           valor_indenizacao: number | null
         }
         Insert: {
+          aberto_por_role?: string | null
           beneficiario_cpf?: string | null
           beneficiario_nome: string
+          concluido_em?: string | null
           created_at?: string
           criado_por: string
           data_comunicacao?: string | null
@@ -1754,14 +1807,29 @@ export type Database = {
           empresa_id: string
           id?: string
           observacoes?: string | null
+          prioridade?: string | null
+          rd_deal_id?: string | null
+          rd_last_sync_at?: string | null
+          rd_org_id?: string | null
+          rd_owner_id?: string | null
+          rd_pipeline_id?: string | null
+          rd_stage_id?: string | null
+          rd_sync_error?: string | null
+          rd_sync_status?: string | null
+          responsavel_id?: string | null
+          sla_minutos?: number | null
           status?: string
+          subestipulante_filial_id?: string | null
           tipo_sinistro: string
           updated_at?: string
+          valor_estimado?: number | null
           valor_indenizacao?: number | null
         }
         Update: {
+          aberto_por_role?: string | null
           beneficiario_cpf?: string | null
           beneficiario_nome?: string
+          concluido_em?: string | null
           created_at?: string
           criado_por?: string
           data_comunicacao?: string | null
@@ -1769,9 +1837,22 @@ export type Database = {
           empresa_id?: string
           id?: string
           observacoes?: string | null
+          prioridade?: string | null
+          rd_deal_id?: string | null
+          rd_last_sync_at?: string | null
+          rd_org_id?: string | null
+          rd_owner_id?: string | null
+          rd_pipeline_id?: string | null
+          rd_stage_id?: string | null
+          rd_sync_error?: string | null
+          rd_sync_status?: string | null
+          responsavel_id?: string | null
+          sla_minutos?: number | null
           status?: string
+          subestipulante_filial_id?: string | null
           tipo_sinistro?: string
           updated_at?: string
+          valor_estimado?: number | null
           valor_indenizacao?: number | null
         }
         Relationships: [
@@ -1780,6 +1861,73 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sinistros_vida_subestipulante_filial_id_fkey"
+            columns: ["subestipulante_filial_id"]
+            isOneToOne: false
+            referencedRelation: "faturamento_entidades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sinistros_vida_timeline: {
+        Row: {
+          created_at: string
+          criado_por: string
+          descricao: string | null
+          empresa_id: string
+          id: string
+          meta: Json | null
+          sinistro_id: string
+          source: string | null
+          status_anterior: string | null
+          status_novo: string | null
+          tipo_evento: string
+          usuario_nome: string | null
+        }
+        Insert: {
+          created_at?: string
+          criado_por: string
+          descricao?: string | null
+          empresa_id: string
+          id?: string
+          meta?: Json | null
+          sinistro_id: string
+          source?: string | null
+          status_anterior?: string | null
+          status_novo?: string | null
+          tipo_evento: string
+          usuario_nome?: string | null
+        }
+        Update: {
+          created_at?: string
+          criado_por?: string
+          descricao?: string | null
+          empresa_id?: string
+          id?: string
+          meta?: Json | null
+          sinistro_id?: string
+          source?: string | null
+          status_anterior?: string | null
+          status_novo?: string | null
+          tipo_evento?: string
+          usuario_nome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sinistros_vida_timeline_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sinistros_vida_timeline_sinistro_id_fkey"
+            columns: ["sinistro_id"]
+            isOneToOne: false
+            referencedRelation: "sinistros_vida"
             referencedColumns: ["id"]
           },
         ]

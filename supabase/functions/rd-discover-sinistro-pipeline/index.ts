@@ -8,13 +8,15 @@ const corsHeaders = {
 const RD_API_BASE = 'https://crm.rdstation.com/api/v1';
 
 interface Pipeline {
-  _id: string;
+  _id?: string;
+  id?: string;
   name: string;
   deal_stages?: unknown[];
 }
 
 interface Stage {
-  _id: string;
+  _id?: string;
+  id?: string;
   name: string;
   deal_pipeline_id?: string;
   deal_pipeline?: { _id?: string; id?: string } | string;
@@ -27,21 +29,29 @@ function norm(s: unknown): string {
   return String(s ?? '').trim().toLowerCase();
 }
 
-function extractPipelines(payload: any): Pipeline[] {
+function extractPipelines(payload: any, requestId: string): Pipeline[] {
+  // Log raw payload structure for debugging
+  console.log(`[${requestId}] Raw pipelines payload keys:`, Object.keys(payload || {}));
+  
   const candidates = [
     payload?.deal_pipelines,
     payload?.pipelines,
     payload?.data?.deal_pipelines,
     payload?.data?.pipelines,
-    payload?.deal_pipelines?.deal_pipelines,
   ];
 
   for (const c of candidates) {
-    if (Array.isArray(c)) return c as Pipeline[];
+    if (Array.isArray(c) && c.length > 0) {
+      console.log(`[${requestId}] Sample pipeline object keys:`, Object.keys(c[0] || {}));
+      return c as Pipeline[];
+    }
   }
 
   // Some APIs may return the array as the root payload
-  if (Array.isArray(payload)) return payload as Pipeline[];
+  if (Array.isArray(payload) && payload.length > 0) {
+    console.log(`[${requestId}] Root array pipeline keys:`, Object.keys(payload[0] || {}));
+    return payload as Pipeline[];
+  }
 
   return [];
 }
@@ -196,54 +206,116 @@ Deno.serve(async (req) => {
     // Helper: resolve orgId when available
     const rdOrgId = empresaId ? await getEmpresaPrimaryOrgId(supabaseAdmin, empresaId) : null;
 
-    // Action: list - return all pipelines and stages
+    // Action: list - return all pipelines (optionally with stages for a specific pipeline)
     if (action === 'list') {
-      console.log(`[${requestId}] Listing all pipelines and stages (empresaId=${empresaId || 'n/a'}; org=${rdOrgId || 'n/a'})`);
-
-      const pipelineParams = {
-        // RD API is inconsistent across endpoints; we try both common params.
-        organization_id: rdOrgId,
-        organization: rdOrgId,
-      };
+      console.log(`[${requestId}] Listing pipelines (empresaId=${empresaId || 'n/a'}; org=${rdOrgId || 'n/a'}; pipelineId=${pipelineId || 'n/a'})`);
 
       const pipelinesData = await fetchRDJson(
-        buildRDUrl('/deal_pipelines', rdToken, pipelineParams),
+        buildRDUrl('/deal_pipelines', rdToken),
         requestId,
         'pipelines'
       );
 
-      let pipelines = extractPipelines(pipelinesData);
+      let pipelines = extractPipelines(pipelinesData, requestId);
 
-      // If empty, retry without org params (some accounts ignore org scoping)
-      if (pipelines.length === 0 && rdOrgId) {
-        const pipelinesData2 = await fetchRDJson(buildRDUrl('/deal_pipelines', rdToken), requestId, 'pipelines');
-        pipelines = extractPipelines(pipelinesData2);
+      console.log(`[${requestId}] Found ${pipelines.length} pipelines`);
+
+      // Map pipelines - handle both _id and id fields
+      const mappedPipelines = pipelines.map((p: any) => ({
+        id: p._id || p.id || '',
+        name: p.name || '',
+      }));
+
+      // If a specific pipelineId is provided, fetch stages for that pipeline
+      let stages: any[] = [];
+      if (pipelineId) {
+        console.log(`[${requestId}] Fetching stages for pipeline ${pipelineId}`);
+        
+        const stagesData = await fetchRDJson(
+          buildRDUrl('/deal_stages', rdToken, { deal_pipeline_id: pipelineId }),
+          requestId,
+          'etapas'
+        );
+        
+        stages = extractStages(stagesData);
+        
+        // If no stages returned with filter, try fetching all and filtering locally
+        if (stages.length === 0) {
+          const allStagesData = await fetchRDJson(
+            buildRDUrl('/deal_stages', rdToken),
+            requestId,
+            'etapas (all)'
+          );
+          const allStages = extractStages(allStagesData);
+          stages = allStages.filter((s) => getStagePipelineId(s) === pipelineId);
+        }
+        
+        console.log(`[${requestId}] Found ${stages.length} stages for pipeline ${pipelineId}`);
       }
-
-      const stagesData = await fetchRDJson(
-        buildRDUrl('/deal_stages', rdToken, pipelineParams),
-        requestId,
-        'etapas'
-      );
-
-      let stages = extractStages(stagesData);
-
-      // Retry without org params if needed
-      if (stages.length === 0 && rdOrgId) {
-        const stagesData2 = await fetchRDJson(buildRDUrl('/deal_stages', rdToken), requestId, 'etapas');
-        stages = extractStages(stagesData2);
-      }
-
-      console.log(`[${requestId}] Found ${pipelines.length} pipelines and ${stages.length} stages`);
 
       return new Response(
         JSON.stringify({
           success: true,
-          pipelines: pipelines.map((p) => ({ id: p._id, name: p.name })),
+          requestId,
+          pipelines: mappedPipelines,
           stages: stages.map((s) => ({
-            id: s._id,
-            name: s.name,
-            pipelineId: getStagePipelineId(s),
+            id: s._id || s.id || '',
+            name: s.name || '',
+            pipelineId: getStagePipelineId(s) || pipelineId,
+            position: s.position ?? s.order ?? 0,
+          })),
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Action: stages - fetch stages for a specific pipeline
+    if (action === 'stages') {
+      if (!pipelineId) {
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: 'pipelineId é obrigatório',
+          code: 'MISSING_PIPELINE_ID',
+          requestId,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        });
+      }
+
+      console.log(`[${requestId}] Fetching stages for pipeline ${pipelineId}`);
+      
+      const stagesData = await fetchRDJson(
+        buildRDUrl('/deal_stages', rdToken, { deal_pipeline_id: pipelineId }),
+        requestId,
+        'etapas'
+      );
+      
+      let stages = extractStages(stagesData);
+      
+      // Fallback: fetch all and filter
+      if (stages.length === 0) {
+        const allStagesData = await fetchRDJson(
+          buildRDUrl('/deal_stages', rdToken),
+          requestId,
+          'etapas (all)'
+        );
+        const allStages = extractStages(allStagesData);
+        stages = allStages.filter((s) => getStagePipelineId(s) === pipelineId);
+      }
+
+      stages.sort((a, b) => (a.position ?? a.order ?? 0) - (b.position ?? b.order ?? 0));
+      
+      console.log(`[${requestId}] Found ${stages.length} stages for pipeline ${pipelineId}`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          requestId,
+          stages: stages.map((s) => ({
+            id: s._id || s.id || '',
+            name: s.name || '',
+            pipelineId: getStagePipelineId(s) || pipelineId,
             position: s.position ?? s.order ?? 0,
           })),
         }),
@@ -262,22 +334,14 @@ Deno.serve(async (req) => {
         });
       }
 
-      const pipelineParams = {
-        organization_id: rdOrgId,
-        organization: rdOrgId,
-      };
 
       const pipelinesData = await fetchRDJson(
-        buildRDUrl('/deal_pipelines', rdToken, pipelineParams),
+        buildRDUrl('/deal_pipelines', rdToken),
         requestId,
         'pipelines'
       );
 
-      let pipelines = extractPipelines(pipelinesData);
-      if (pipelines.length === 0 && rdOrgId) {
-        const pipelinesData2 = await fetchRDJson(buildRDUrl('/deal_pipelines', rdToken), requestId, 'pipelines');
-        pipelines = extractPipelines(pipelinesData2);
-      }
+      let pipelines = extractPipelines(pipelinesData, requestId);
 
       console.log(`[${requestId}] Available pipelines:`, pipelines.map((p) => p.name));
 
@@ -299,7 +363,7 @@ Deno.serve(async (req) => {
             success: false,
             error: 'Pipeline "Gestão de Sinistro" não encontrado no RD Station. Crie o funil ou selecione manualmente.',
             code: 'pipeline_not_found',
-            availablePipelines: pipelines.map((p) => ({ id: p._id, name: p.name })),
+            availablePipelines: pipelines.map((p) => ({ id: p._id || p.id, name: p.name })),
           }),
           {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -308,11 +372,12 @@ Deno.serve(async (req) => {
         );
       }
 
-      console.log(`[${requestId}] Found pipeline: ${sinistroP.name} (${sinistroP._id})`);
+      const sinistroId = sinistroP._id || sinistroP.id || '';
+      console.log(`[${requestId}] Found pipeline: ${sinistroP.name} (${sinistroId})`);
 
       // First try: ask RD only for stages from this pipeline (when supported)
       let stagesData = await fetchRDJson(
-        buildRDUrl('/deal_stages', rdToken, { ...pipelineParams, deal_pipeline_id: sinistroP._id }),
+        buildRDUrl('/deal_stages', rdToken, { deal_pipeline_id: sinistroId }),
         requestId,
         'etapas'
       );
@@ -321,12 +386,12 @@ Deno.serve(async (req) => {
 
       // Fallback: fetch all stages and filter locally
       if (allStages.length === 0) {
-        const stagesData2 = await fetchRDJson(buildRDUrl('/deal_stages', rdToken, pipelineParams), requestId, 'etapas');
+        const stagesData2 = await fetchRDJson(buildRDUrl('/deal_stages', rdToken), requestId, 'etapas');
         allStages = extractStages(stagesData2);
       }
 
       const pipelineStages = allStages
-        .filter((s) => getStagePipelineId(s) === sinistroP!._id || allStages.length <= 20) // small responses may already be scoped
+        .filter((s) => getStagePipelineId(s) === sinistroId || allStages.length <= 20) // small responses may already be scoped
         .sort((a, b) => (a.position ?? a.order ?? 0) - (b.position ?? b.order ?? 0));
 
       console.log(`[${requestId}] Pipeline stages:`, pipelineStages.map((s) => s.name));
@@ -360,15 +425,19 @@ Deno.serve(async (req) => {
       }
 
       // Save to database
+      const stageInicialId = stageInicial._id || stageInicial.id || '';
+      const stageEmAndamentoIdVal = stageEmAndamento?._id || stageEmAndamento?.id || null;
+      const stageConcluidoIdVal = stageConcluido?._id || stageConcluido?.id || null;
+      
       const configData = {
         empresa_id: empresaId,
-        sinistro_pipeline_id: sinistroP._id,
+        sinistro_pipeline_id: sinistroId,
         sinistro_pipeline_name: sinistroP.name,
-        sinistro_stage_inicial_id: stageInicial._id,
+        sinistro_stage_inicial_id: stageInicialId,
         sinistro_stage_inicial_name: stageInicial.name,
-        sinistro_stage_em_andamento_id: stageEmAndamento?._id || null,
+        sinistro_stage_em_andamento_id: stageEmAndamentoIdVal,
         sinistro_stage_em_andamento_name: stageEmAndamento?.name || null,
-        sinistro_stage_concluido_id: stageConcluido?._id || null,
+        sinistro_stage_concluido_id: stageConcluidoIdVal,
         sinistro_stage_concluido_name: stageConcluido?.name || null,
       };
 
@@ -414,40 +483,31 @@ Deno.serve(async (req) => {
         });
       }
 
-      const pipelineParams = {
-        organization_id: rdOrgId,
-        organization: rdOrgId,
-      };
+      const pipelinesData = await fetchRDJson(buildRDUrl('/deal_pipelines', rdToken), requestId, 'pipelines');
+      let pipelines = extractPipelines(pipelinesData, requestId);
+      const pipeline = pipelines.find((p) => (p._id || p.id) === pipelineId);
 
-      const pipelinesData = await fetchRDJson(buildRDUrl('/deal_pipelines', rdToken, pipelineParams), requestId, 'pipelines');
-      let pipelines = extractPipelines(pipelinesData);
-      if (pipelines.length === 0 && rdOrgId) {
-        const pipelinesData2 = await fetchRDJson(buildRDUrl('/deal_pipelines', rdToken), requestId, 'pipelines');
-        pipelines = extractPipelines(pipelinesData2);
-      }
-      const pipeline = pipelines.find((p) => p._id === pipelineId);
-
-      const stagesData = await fetchRDJson(buildRDUrl('/deal_stages', rdToken, { ...pipelineParams, deal_pipeline_id: pipelineId }), requestId, 'etapas');
+      const stagesData = await fetchRDJson(buildRDUrl('/deal_stages', rdToken, { deal_pipeline_id: pipelineId }), requestId, 'etapas');
       let stages = extractStages(stagesData);
       if (stages.length === 0) {
-        const stagesData2 = await fetchRDJson(buildRDUrl('/deal_stages', rdToken, pipelineParams), requestId, 'etapas');
+        const stagesData2 = await fetchRDJson(buildRDUrl('/deal_stages', rdToken), requestId, 'etapas');
         stages = extractStages(stagesData2);
       }
 
-      const stageInicial = stages.find((s) => s._id === stageInicialId);
-      const stageEmAndamento = stageEmAndamentoId ? stages.find((s) => s._id === stageEmAndamentoId) : null;
-      const stageConcluido = stageConcluidoId ? stages.find((s) => s._id === stageConcluidoId) : null;
+      const stageInicialFound = stages.find((s) => (s._id || s.id) === stageInicialId);
+      const stageEmAndamentoFound = stageEmAndamentoId ? stages.find((s) => (s._id || s.id) === stageEmAndamentoId) : null;
+      const stageConcluidoFound = stageConcluidoId ? stages.find((s) => (s._id || s.id) === stageConcluidoId) : null;
 
       const configData = {
         empresa_id: empresaId,
         sinistro_pipeline_id: pipelineId,
         sinistro_pipeline_name: pipeline?.name || null,
         sinistro_stage_inicial_id: stageInicialId,
-        sinistro_stage_inicial_name: stageInicial?.name || null,
+        sinistro_stage_inicial_name: stageInicialFound?.name || null,
         sinistro_stage_em_andamento_id: stageEmAndamentoId || null,
-        sinistro_stage_em_andamento_name: stageEmAndamento?.name || null,
+        sinistro_stage_em_andamento_name: stageEmAndamentoFound?.name || null,
         sinistro_stage_concluido_id: stageConcluidoId || null,
-        sinistro_stage_concluido_name: stageConcluido?.name || null,
+        sinistro_stage_concluido_name: stageConcluidoFound?.name || null,
       };
 
       const { error: upsertError } = await supabaseAdmin

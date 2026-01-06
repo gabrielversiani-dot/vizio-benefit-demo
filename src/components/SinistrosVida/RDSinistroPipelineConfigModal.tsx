@@ -61,6 +61,7 @@ export function RDSinistroPipelineConfigModal({
   const [selectedStageEmAndamentoId, setSelectedStageEmAndamentoId] = useState<string>("");
   const [selectedStageConcluidoId, setSelectedStageConcluidoId] = useState<string>("");
   const [showManualConfig, setShowManualConfig] = useState(false);
+  const [loadingStages, setLoadingStages] = useState(false);
 
   useEffect(() => {
     if (open && empresaId) {
@@ -116,7 +117,7 @@ export function RDSinistroPipelineConfigModal({
           setError(data.error);
           setPipelines(data.availablePipelines || []);
           setShowManualConfig(true);
-          await loadAllStages();
+          await loadPipelines();
           return;
         }
         throw new Error(data.error);
@@ -144,7 +145,7 @@ export function RDSinistroPipelineConfigModal({
     }
   };
 
-  const loadAllStages = async () => {
+  const loadPipelines = async () => {
     try {
       const { data: session } = await supabase.auth.getSession();
       
@@ -156,11 +157,45 @@ export function RDSinistroPipelineConfigModal({
       if (fnError) throw fnError;
 
       if (data.success) {
-        setPipelines(data.pipelines);
-        setStages(data.stages);
+        setPipelines(data.pipelines || []);
       }
     } catch (err) {
-      console.error('Error loading pipelines/stages:', err);
+      console.error('Error loading pipelines:', err);
+      setError('Não foi possível carregar funis do RD. Verifique a integração e tente novamente.');
+    }
+  };
+
+  const loadStagesForPipeline = async (pipeId: string) => {
+    setLoadingStages(true);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      
+      const { data, error: fnError } = await supabase.functions.invoke('rd-discover-sinistro-pipeline', {
+        headers: { Authorization: `Bearer ${session.session?.access_token}` },
+        body: { action: 'stages', pipelineId: pipeId },
+      });
+
+      if (fnError) throw fnError;
+
+      if (data.success) {
+        setStages(data.stages || []);
+      }
+    } catch (err) {
+      console.error('Error loading stages:', err);
+      setError('Erro ao carregar etapas do funil.');
+    } finally {
+      setLoadingStages(false);
+    }
+  };
+
+  const handlePipelineChange = (pipeId: string) => {
+    setSelectedPipelineId(pipeId);
+    setSelectedStageInicialId("");
+    setSelectedStageEmAndamentoId("");
+    setSelectedStageConcluidoId("");
+    setStages([]);
+    if (pipeId) {
+      loadStagesForPipeline(pipeId);
     }
   };
 
@@ -204,7 +239,8 @@ export function RDSinistroPipelineConfigModal({
     }
   };
 
-  const filteredStages = stages.filter(s => s.pipelineId === selectedPipelineId);
+  // Stages already come scoped by pipeline
+  const filteredStages = stages;
 
   if (loading) {
     return (
@@ -271,7 +307,7 @@ export function RDSinistroPipelineConfigModal({
                   className="flex-1"
                   onClick={() => {
                     setShowManualConfig(true);
-                    loadAllStages();
+                    loadPipelines();
                   }}
                 >
                   <Settings2 className="h-4 w-4 mr-2" />
@@ -319,7 +355,7 @@ export function RDSinistroPipelineConfigModal({
                     variant="outline" 
                     onClick={() => {
                       setShowManualConfig(true);
-                      loadAllStages();
+                      loadPipelines();
                     }}
                   >
                     Configurar manualmente
@@ -342,12 +378,7 @@ export function RDSinistroPipelineConfigModal({
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Pipeline *</Label>
-                  <Select value={selectedPipelineId} onValueChange={(val) => {
-                    setSelectedPipelineId(val);
-                    setSelectedStageInicialId("");
-                    setSelectedStageEmAndamentoId("");
-                    setSelectedStageConcluidoId("");
-                  }}>
+                  <Select value={selectedPipelineId} onValueChange={handlePipelineChange}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o pipeline..." />
                     </SelectTrigger>

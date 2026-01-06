@@ -150,7 +150,7 @@ export function RDSinistroPipelineConfigModal({
       
       const { data, error: fnError } = await supabase.functions.invoke('rd-discover-sinistro-pipeline', {
         headers: { Authorization: `Bearer ${session.session?.access_token}` },
-        body: { action: 'list' },
+        body: { action: 'list', empresaId },
       });
 
       if (fnError) throw fnError;

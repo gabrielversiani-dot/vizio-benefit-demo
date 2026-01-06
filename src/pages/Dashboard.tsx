@@ -1,157 +1,44 @@
+import { useState } from "react";
 import { AppLayout } from "@/components/Layout/AppLayout";
-import { StatCard } from "@/components/Dashboard/StatCard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Activity, DollarSign, TrendingUp, Heart, Smile, Shield } from "lucide-react";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { DashboardFilters } from "@/components/Dashboard/DashboardFilters";
+import { KPICards } from "@/components/Dashboard/KPICards";
+import { DashboardCharts } from "@/components/Dashboard/DashboardCharts";
+import { PendenciasList } from "@/components/Dashboard/PendenciasList";
+import { QuickActions } from "@/components/Dashboard/QuickActions";
+import { ActivityFeed } from "@/components/Dashboard/ActivityFeed";
+import { ComingSoonCard } from "@/components/Dashboard/ComingSoonCard";
 import { useEmpresa } from "@/contexts/EmpresaContext";
-import { Skeleton } from "@/components/ui/skeleton";
-import { subMonths, format, startOfMonth } from "date-fns";
-
-const CHART_COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))'];
+import { usePermissions } from "@/hooks/usePermissions";
+import {
+  useDashboardKPIs,
+  useDashboardCharts,
+  useDashboardPendencias,
+  useDashboardFeed,
+  PeriodFilter,
+  ProductFilter,
+} from "@/hooks/useDashboardData";
+import { Card, CardContent } from "@/components/ui/card";
+import { Bot, Sparkles } from "lucide-react";
 
 export default function Dashboard() {
   const { empresaSelecionada } = useEmpresa();
+  const { isAdmin, isClient } = usePermissions();
   
-  // Data de 6 meses atrás
-  const sixMonthsAgo = format(startOfMonth(subMonths(new Date(), 5)), 'yyyy-MM-dd');
-  const currentMonth = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+  const [period, setPeriod] = useState<PeriodFilter>("12");
+  const [product, setProduct] = useState<ProductFilter>("todos");
 
-  // Fetch beneficiários count
-  const { data: beneficiarios = [], isLoading: loadingBeneficiarios } = useQuery({
-    queryKey: ['dashboard-beneficiarios', empresaSelecionada],
-    queryFn: async () => {
-      let query = supabase
-        .from('beneficiarios')
-        .select('id, status, plano_saude, plano_vida, plano_odonto, tipo')
-        .eq('status', 'ativo');
+  const filters = { period, product };
 
-      if (empresaSelecionada) {
-        query = query.eq('empresa_id', empresaSelecionada);
-      }
+  const { data: kpiData, isLoading: loadingKPIs } = useDashboardKPIs(filters);
+  const { data: chartData, isLoading: loadingCharts } = useDashboardCharts(filters);
+  const { data: pendenciasData, isLoading: loadingPendencias } = useDashboardPendencias();
+  const { data: feedData, isLoading: loadingFeed } = useDashboardFeed();
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  // Fetch faturamento (últimos 6 meses)
-  const { data: faturamento = [], isLoading: loadingFaturamento } = useQuery({
-    queryKey: ['dashboard-faturamento', empresaSelecionada, sixMonthsAgo],
-    queryFn: async () => {
-      let query = supabase
-        .from('faturamento')
-        .select('*')
-        .gte('competencia', sixMonthsAgo)
-        .lte('competencia', currentMonth)
-        .order('competencia', { ascending: true });
-
-      if (empresaSelecionada) {
-        query = query.eq('empresa_id', empresaSelecionada);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  // Fetch sinistralidade (últimos 6 meses)
-  const { data: sinistralidade = [], isLoading: loadingSinistralidade } = useQuery({
-    queryKey: ['dashboard-sinistralidade', empresaSelecionada, sixMonthsAgo],
-    queryFn: async () => {
-      let query = supabase
-        .from('sinistralidade')
-        .select('*')
-        .gte('competencia', sixMonthsAgo)
-        .lte('competencia', currentMonth)
-        .order('competencia', { ascending: true });
-
-      if (empresaSelecionada) {
-        query = query.eq('empresa_id', empresaSelecionada);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const isLoading = loadingBeneficiarios || loadingFaturamento || loadingSinistralidade;
-
-  // Calculate KPIs
-  const vidasAtivas = beneficiarios.length;
-  const titulares = beneficiarios.filter(b => b.tipo === 'titular').length;
-  const dependentes = beneficiarios.filter(b => b.tipo === 'dependente').length;
-
-  // Pegar o último mês disponível para KPIs
-  const ultimoFaturamento = faturamento.length > 0 ? faturamento[faturamento.length - 1] : null;
-  const ultimaSinistralidade = sinistralidade.length > 0 ? sinistralidade[sinistralidade.length - 1] : null;
-  
-  const faturamentoMes = ultimoFaturamento?.valor_total || 0;
-  const sinistrosMes = ultimaSinistralidade?.valor_sinistros || 0;
-  const premioMes = ultimaSinistralidade?.valor_premio || 0;
-  const taxaSinistralidade = premioMes > 0 ? (sinistrosMes / premioMes) * 100 : 0;
-  const ticketMedio = vidasAtivas > 0 ? faturamentoMes / vidasAtivas : 0;
-
-  // Monthly evolution data (últimos 6 meses)
-  const monthlyData = faturamento.map((f) => {
-    const competencia = new Date(f.competencia);
-    const sinistroMes = sinistralidade.find(s => 
-      new Date(s.competencia).getMonth() === competencia.getMonth() &&
-      new Date(s.competencia).getFullYear() === competencia.getFullYear()
-    );
-    
-    return {
-      month: competencia.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
-      faturamento: f.valor_total || 0,
-      sinistros: sinistroMes?.valor_sinistros || 0,
-    };
-  });
-
-  // Sinistralidade by type
-  const sinistrosPorTipo = sinistralidade.reduce((acc, s) => {
-    acc.consultas += s.sinistros_consultas || 0;
-    acc.exames += s.sinistros_exames || 0;
-    acc.procedimentos += s.sinistros_procedimentos || 0;
-    acc.internacoes += s.sinistros_internacoes || 0;
-    acc.outros += s.sinistros_outros || 0;
-    return acc;
-  }, { consultas: 0, exames: 0, procedimentos: 0, internacoes: 0, outros: 0 });
-
-  const totalSinistrosTipo = Object.values(sinistrosPorTipo).reduce((a, b) => a + b, 0);
-  
-  const sinistralityData = totalSinistrosTipo > 0 ? [
-    { tipo: 'Consultas', valor: (sinistrosPorTipo.consultas / totalSinistrosTipo) * 100 },
-    { tipo: 'Exames', valor: (sinistrosPorTipo.exames / totalSinistrosTipo) * 100 },
-    { tipo: 'Procedimentos', valor: (sinistrosPorTipo.procedimentos / totalSinistrosTipo) * 100 },
-    { tipo: 'Internações', valor: (sinistrosPorTipo.internacoes / totalSinistrosTipo) * 100 },
-    { tipo: 'Outros', valor: (sinistrosPorTipo.outros / totalSinistrosTipo) * 100 },
-  ].filter(d => d.valor > 0) : [];
-
-  // Benefícios ativos data
-  const beneficiosData = [
-    { name: 'Saúde', value: beneficiarios.filter(b => b.plano_saude).length },
-    { name: 'Vida', value: beneficiarios.filter(b => b.plano_vida).length },
-    { name: 'Odonto', value: beneficiarios.filter(b => b.plano_odonto).length },
-  ].filter(d => d.value > 0);
-
-  if (isLoading) {
+  if (!empresaSelecionada) {
     return (
       <AppLayout>
-        <div className="space-y-8">
-          <Skeleton className="h-12 w-1/3" />
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="h-32" />
-            ))}
-          </div>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Skeleton className="h-80" />
-            <Skeleton className="h-80" />
-          </div>
+        <div className="flex items-center justify-center h-[50vh]">
+          <p className="text-muted-foreground">Selecione uma empresa para visualizar o dashboard</p>
         </div>
       </AppLayout>
     );
@@ -159,187 +46,71 @@ export default function Dashboard() {
 
   return (
     <AppLayout>
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight">Dashboard</h1>
-          <p className="mt-2 text-muted-foreground">
-            Visão geral da gestão de benefícios corporativos
-          </p>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            title="Vidas Ativas"
-            value={vidasAtivas.toLocaleString('pt-BR')}
-            change={`${titulares} titulares, ${dependentes} dependentes`}
-            changeType="neutral"
-            icon={Users}
-            iconColor="bg-success/10 text-success"
-          />
-          <StatCard
-            title="Faturamento do Mês"
-            value={faturamentoMes.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
-            change={ultimoFaturamento ? `Competência: ${new Date(ultimoFaturamento.competencia).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}` : "Sem dados"}
-            changeType="neutral"
-            icon={DollarSign}
-            iconColor="bg-chart-2/10 text-chart-2"
-          />
-          <StatCard
-            title="Sinistralidade do Mês"
-            value={`${taxaSinistralidade.toFixed(1)}%`}
-            change={taxaSinistralidade > 75 ? "Atenção: acima do ideal" : taxaSinistralidade > 0 ? "Dentro do esperado" : "Sem dados"}
-            changeType={taxaSinistralidade > 75 ? "negative" : taxaSinistralidade > 0 ? "positive" : "neutral"}
-            icon={Activity}
-            iconColor="bg-warning/10 text-warning"
-          />
-          <StatCard
-            title="Ticket Médio"
-            value={ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-            change="Por vida ativa"
-            changeType="neutral"
-            icon={TrendingUp}
-            iconColor="bg-chart-4/10 text-chart-4"
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-muted-foreground">
+              Visão geral da gestão de benefícios
+            </p>
+          </div>
+          <DashboardFilters
+            period={period}
+            product={product}
+            onPeriodChange={setPeriod}
+            onProductChange={setProduct}
           />
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Faturamento vs Sinistros</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {monthlyData.length === 0 ? (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  Nenhum dado disponível
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={monthlyData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="month" 
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={12}
-                    />
-                    <YAxis 
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={12}
-                      tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--popover))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "var(--radius)",
-                      }}
-                      formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR')}`, '']}
-                    />
-                    <Legend />
-                    <Line 
-                      type="monotone" 
-                      dataKey="faturamento" 
-                      stroke="hsl(var(--chart-2))" 
-                      strokeWidth={2}
-                      name="Faturamento"
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="sinistros" 
-                      stroke="hsl(var(--warning))" 
-                      strokeWidth={2}
-                      name="Sinistros"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+        {/* KPI Cards */}
+        <KPICards data={kpiData} isLoading={loadingKPIs} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Sinistralidade por Tipo</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {sinistralityData.length === 0 ? (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  Nenhum dado disponível
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={sinistralityData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="tipo" 
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={12}
-                    />
-                    <YAxis 
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={12}
-                      tickFormatter={(value) => `${value.toFixed(0)}%`}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--popover))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "var(--radius)",
-                      }}
-                      formatter={(value: number) => [`${value.toFixed(1)}%`, 'Participação']}
-                    />
-                    <Bar 
-                      dataKey="valor" 
-                      fill="hsl(var(--chart-1))"
-                      radius={[8, 8, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        {/* Charts */}
+        <DashboardCharts data={chartData} isLoading={loadingCharts} />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Resumo de Benefícios Ativos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {beneficiosData.length === 0 ? (
-              <div className="h-[200px] flex items-center justify-center text-muted-foreground">
-                Nenhum benefício cadastrado
-              </div>
-            ) : (
-              <div className="grid gap-6 md:grid-cols-3">
-                <div className="flex items-center gap-4 p-4 rounded-lg bg-chart-1/10">
-                  <div className="h-12 w-12 rounded-full bg-chart-1/20 flex items-center justify-center">
-                    <Heart className="h-6 w-6 text-chart-1" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Plano Saúde</p>
-                    <p className="text-2xl font-bold">{beneficiarios.filter(b => b.plano_saude).length}</p>
-                  </div>
+        {/* Bottom Section */}
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Left Column - Pendências + Quick Actions */}
+          <div className="lg:col-span-2 space-y-6">
+            <PendenciasList data={pendenciasData} isLoading={loadingPendencias} />
+            
+            {isAdmin && <QuickActions />}
+
+            {/* AI Recommendations placeholder */}
+            <Card className="border-dashed">
+              <CardContent className="flex items-center gap-4 py-6">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Bot className="h-5 w-5 text-primary" />
                 </div>
-                <div className="flex items-center gap-4 p-4 rounded-lg bg-chart-2/10">
-                  <div className="h-12 w-12 rounded-full bg-chart-2/20 flex items-center justify-center">
-                    <Shield className="h-6 w-6 text-chart-2" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-medium text-sm">Recomendações com IA</h3>
+                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                      <Sparkles className="h-2.5 w-2.5" />
+                      Em breve
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Seguro Vida</p>
-                    <p className="text-2xl font-bold">{beneficiarios.filter(b => b.plano_vida).length}</p>
-                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Estamos preparando insights personalizados para sua empresa 🚀
+                  </p>
                 </div>
-                <div className="flex items-center gap-4 p-4 rounded-lg bg-chart-3/10">
-                  <div className="h-12 w-12 rounded-full bg-chart-3/20 flex items-center justify-center">
-                    <Smile className="h-6 w-6 text-chart-3" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Plano Odonto</p>
-                    <p className="text-2xl font-bold">{beneficiarios.filter(b => b.plano_odonto).length}</p>
-                  </div>
-                </div>
-              </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Column - Feed */}
+          <div className="space-y-6">
+            <ActivityFeed data={feedData} isLoading={loadingFeed} />
+            
+            {isClient && (
+              <ComingSoonCard 
+                title="Gestão Avançada de Demandas" 
+                description="Acompanhamento detalhado e SLA em tempo real"
+              />
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </AppLayout>
   );

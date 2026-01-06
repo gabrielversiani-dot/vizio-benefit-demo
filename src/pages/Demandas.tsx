@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ClipboardList, Clock, CheckCircle2, AlertCircle, Filter, Eye, RefreshCw, Settings2, Link2Off } from "lucide-react";
+import { ClipboardList, Clock, CheckCircle2, AlertCircle, Filter, Eye, RefreshCw, Settings2, Link2Off, AlertTriangle } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, formatDistanceToNow } from "date-fns";
@@ -15,7 +15,7 @@ import { useEmpresa } from "@/contexts/EmpresaContext";
 import { RDStationConfigModal } from "@/components/Demandas/RDStationConfigModal";
 import { toast } from "sonner";
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; color: string }> = {
   pendente: { label: "Pendente", color: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30" },
   em_andamento: { label: "Em Andamento", color: "bg-blue-500/20 text-blue-700 border-blue-500/30" },
   aguardando_documentacao: { label: "Aguardando Doc.", color: "bg-orange-500/20 text-orange-700 border-orange-500/30" },
@@ -33,7 +33,7 @@ const tipoConfig: Record<string, string> = {
   outro: "Outro",
 };
 
-const prioridadeConfig = {
+const prioridadeConfig: Record<string, { label: string; color: string }> = {
   baixa: { label: "Baixa", color: "bg-slate-500/20 text-slate-700" },
   media: { label: "Média", color: "bg-blue-500/20 text-blue-700" },
   alta: { label: "Alta", color: "bg-orange-500/20 text-orange-700" },
@@ -45,33 +45,38 @@ const sourceConfig: Record<string, { label: string; color: string }> = {
   rd_station: { label: "RD Station", color: "bg-purple-100 text-purple-700" },
 };
 
-type StatusDemanda = keyof typeof statusConfig;
-type PrioridadeDemanda = keyof typeof prioridadeConfig;
-
 interface Demanda {
   id: string;
   titulo: string;
   tipo: string;
-  status: StatusDemanda;
-  prioridade: PrioridadeDemanda;
+  status: string;
+  prioridade: string;
   prazo: string | null;
   created_at: string;
   source: string;
   rd_deal_name?: string | null;
   responsavel_nome?: string | null;
-  empresas?: { nome: string } | null;
 }
 
 interface HistoricoItem {
   id: string;
   demanda_id: string;
-  tipo_evento: string;
+  tipo_evento: string | null;
   status_anterior: string | null;
   status_novo: string | null;
   descricao: string | null;
   usuario_nome: string | null;
   created_at: string;
   demandas?: { titulo: string } | null;
+}
+
+interface EmpresaConfig {
+  id: string;
+  nome: string;
+  rd_station_enabled: boolean | null;
+  rd_station_organization_id: string | null;
+  rd_station_org_name_snapshot: string | null;
+  rd_station_last_sync: string | null;
 }
 
 const Demandas = () => {
@@ -82,8 +87,9 @@ const Demandas = () => {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const empresaAtual = empresas.find(e => e.id === empresaSelecionada);
+  // empresaSelecionada is the ID (string), empresaAtual is the object
   const empresaId = empresaSelecionada;
+  const empresaAtual = empresas.find(e => e.id === empresaSelecionada);
 
   // Fetch empresa details with RD config
   const { data: empresaConfig, refetch: refetchEmpresaConfig } = useQuery({
@@ -96,7 +102,7 @@ const Demandas = () => {
         .eq("id", empresaId)
         .single();
       if (error) throw error;
-      return data;
+      return data as EmpresaConfig;
     },
     enabled: !!empresaId,
   });
@@ -107,23 +113,27 @@ const Demandas = () => {
     queryFn: async () => {
       if (!empresaId) return [];
       
-      let query = supabase
+      // Start building the query
+      const baseQuery = supabase
         .from("demandas")
         .select("*")
         .eq("empresa_id", empresaId)
         .order("created_at", { ascending: false });
 
+      // Apply filters using raw SQL filter to avoid TS enum issues
+      let filteredQuery = baseQuery;
+      
       if (filtroStatus !== "todos") {
-        query = query.eq("status", filtroStatus);
+        filteredQuery = filteredQuery.filter("status", "eq", filtroStatus);
       }
       if (filtroTipo !== "todos") {
-        query = query.eq("tipo", filtroTipo);
+        filteredQuery = filteredQuery.filter("tipo", "eq", filtroTipo);
       }
       if (filtroSource !== "todos") {
-        query = query.eq("source", filtroSource);
+        filteredQuery = filteredQuery.filter("source", "eq", filtroSource);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await filteredQuery;
       if (error) throw error;
       return data as Demanda[];
     },
@@ -161,11 +171,21 @@ const Demandas = () => {
         },
         body: {
           empresaId,
+          forceSync: false,
         },
       });
 
       if (error) throw error;
-      if (!data.success) throw new Error(data.error);
+      
+      if (!data.success) {
+        if (data.needsSetup) {
+          throw new Error("NEEDS_SETUP");
+        }
+        if (data.needsMapping) {
+          throw new Error("NEEDS_MAPPING");
+        }
+        throw new Error(data.error || "Erro desconhecido");
+      }
       
       return data;
     },
@@ -176,7 +196,13 @@ const Demandas = () => {
       queryClient.invalidateQueries({ queryKey: ["demandas-historico"] });
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Erro ao sincronizar com RD Station");
+      if (error.message === "NEEDS_SETUP") {
+        toast.error("Integração RD Station não habilitada para esta empresa");
+      } else if (error.message === "NEEDS_MAPPING") {
+        toast.error("Empresa não vinculada a uma organização do RD Station");
+      } else {
+        toast.error(error.message || "Erro ao sincronizar com RD Station");
+      }
     },
   });
 
@@ -195,19 +221,19 @@ const Demandas = () => {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Acompanhamento de Demandas</h1>
             <p className="text-muted-foreground">
               Visualize e acompanhe suas solicitações
-              {empresaSelecionada && ` - ${empresaSelecionada.nome}`}
+              {empresaAtual && ` - ${empresaAtual.nome}`}
             </p>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* RD Station Status & Sync */}
             {rdEnabled ? (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
                   <div className="w-2 h-2 rounded-full bg-purple-500 mr-2" />
                   RD Station Conectado
@@ -222,7 +248,7 @@ const Demandas = () => {
                   {syncMutation.isPending ? 'Sincronizando...' : 'Sincronizar'}
                 </Button>
                 {lastSync && (
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
                     Última sync: {lastSync}
                   </span>
                 )}
@@ -247,6 +273,20 @@ const Demandas = () => {
             )}
           </div>
         </div>
+
+        {/* Warning for non-admin users when RD not configured */}
+        {!rdEnabled && !isAdminVizio && (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+            <div>
+              <p className="font-medium text-amber-800">Integração não configurada</p>
+              <p className="text-sm text-amber-700">
+                A sincronização com RD Station não está ativa para sua empresa. 
+                Solicite à corretora para configurar a integração.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* KPIs */}
         <div className="grid gap-4 md:grid-cols-4">
@@ -369,21 +409,20 @@ const Demandas = () => {
                   </div>
                 ) : demandas.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
-                    {!rdEnabled ? (
-                      <div className="space-y-2">
+                    {!rdEnabled && isAdminVizio ? (
+                      <div className="space-y-3">
                         <p>Nenhuma demanda encontrada</p>
-                        {isAdminVizio && (
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => setConfigModalOpen(true)}
-                          >
-                            Vincular RD Station
-                          </Button>
-                        )}
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setConfigModalOpen(true)}
+                        >
+                          <Settings2 className="h-4 w-4 mr-2" />
+                          Vincular RD Station
+                        </Button>
                       </div>
-                    ) : (
-                      <div className="space-y-2">
+                    ) : rdEnabled ? (
+                      <div className="space-y-3">
                         <p>Nenhuma demanda encontrada</p>
                         <Button 
                           variant="outline" 
@@ -395,81 +434,85 @@ const Demandas = () => {
                           Sincronizar agora
                         </Button>
                       </div>
+                    ) : (
+                      <p>Nenhuma demanda encontrada</p>
                     )}
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Título</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Prioridade</TableHead>
-                        <TableHead>Origem</TableHead>
-                        <TableHead>Responsável</TableHead>
-                        <TableHead>Prazo</TableHead>
-                        <TableHead>Data Criação</TableHead>
-                        <TableHead className="text-right">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {demandas.map((demanda) => (
-                        <TableRow key={demanda.id}>
-                          <TableCell className="font-medium">
-                            <div>
-                              {demanda.titulo}
-                              {demanda.rd_deal_name && (
-                                <p className="text-xs text-muted-foreground">
-                                  Negociação: {demanda.rd_deal_name}
-                                </p>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>{tipoConfig[demanda.tipo] || demanda.tipo}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="outline"
-                              className={statusConfig[demanda.status]?.color || ""}
-                            >
-                              {statusConfig[demanda.status]?.label || demanda.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="secondary"
-                              className={prioridadeConfig[demanda.prioridade]?.color || ""}
-                            >
-                              {prioridadeConfig[demanda.prioridade]?.label || demanda.prioridade}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="secondary"
-                              className={sourceConfig[demanda.source]?.color || "bg-slate-100"}
-                            >
-                              {sourceConfig[demanda.source]?.label || demanda.source}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {demanda.responsavel_nome || "-"}
-                          </TableCell>
-                          <TableCell>
-                            {demanda.prazo
-                              ? format(new Date(demanda.prazo), "dd/MM/yyyy", { locale: ptBR })
-                              : "-"}
-                          </TableCell>
-                          <TableCell>
-                            {format(new Date(demanda.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="ghost" size="sm">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Título</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Prioridade</TableHead>
+                          <TableHead>Origem</TableHead>
+                          <TableHead>Responsável</TableHead>
+                          <TableHead>Prazo</TableHead>
+                          <TableHead>Data Criação</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {demandas.map((demanda) => (
+                          <TableRow key={demanda.id}>
+                            <TableCell className="font-medium">
+                              <div>
+                                {demanda.titulo}
+                                {demanda.rd_deal_name && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Negociação: {demanda.rd_deal_name}
+                                  </p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>{tipoConfig[demanda.tipo] || demanda.tipo}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={statusConfig[demanda.status]?.color || ""}
+                              >
+                                {statusConfig[demanda.status]?.label || demanda.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="secondary"
+                                className={prioridadeConfig[demanda.prioridade]?.color || ""}
+                              >
+                                {prioridadeConfig[demanda.prioridade]?.label || demanda.prioridade}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="secondary"
+                                className={sourceConfig[demanda.source]?.color || "bg-slate-100"}
+                              >
+                                {sourceConfig[demanda.source]?.label || demanda.source}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {demanda.responsavel_nome || "-"}
+                            </TableCell>
+                            <TableCell>
+                              {demanda.prazo
+                                ? format(new Date(demanda.prazo), "dd/MM/yyyy", { locale: ptBR })
+                                : "-"}
+                            </TableCell>
+                            <TableCell>
+                              {format(new Date(demanda.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="ghost" size="sm">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -524,11 +567,11 @@ const Demandas = () => {
                           {item.status_anterior && item.status_novo && (
                             <div className="flex items-center gap-2 mt-2">
                               <Badge variant="outline" className="text-xs">
-                                {statusConfig[item.status_anterior as StatusDemanda]?.label || item.status_anterior}
+                                {statusConfig[item.status_anterior]?.label || item.status_anterior}
                               </Badge>
                               <span className="text-muted-foreground">→</span>
                               <Badge variant="outline" className="text-xs">
-                                {statusConfig[item.status_novo as StatusDemanda]?.label || item.status_novo}
+                                {statusConfig[item.status_novo]?.label || item.status_novo}
                               </Badge>
                             </div>
                           )}
@@ -551,11 +594,11 @@ const Demandas = () => {
       </div>
 
       {/* RD Station Config Modal */}
-      {empresaSelecionada && (
+      {empresaConfig && (
         <RDStationConfigModal
           open={configModalOpen}
           onOpenChange={setConfigModalOpen}
-          empresa={empresaConfig || null}
+          empresa={empresaConfig}
           onUpdate={() => {
             refetchEmpresaConfig();
             refetchDemandas();

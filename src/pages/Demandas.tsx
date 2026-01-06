@@ -70,13 +70,11 @@ interface HistoricoItem {
   demandas?: { titulo: string } | null;
 }
 
-interface RDIntegrationConfig {
+interface LinkedRDOrg {
   id: string;
-  empresa_id: string;
   rd_organization_id: string;
   rd_organization_name: string | null;
-  ativo: boolean;
-  last_sync_at: string | null;
+  active: boolean;
 }
 
 const Demandas = () => {
@@ -91,20 +89,34 @@ const Demandas = () => {
   const empresaId = empresaSelecionada;
   const empresaAtual = empresas.find(e => e.id === empresaSelecionada);
 
-  // Fetch RD integration config from new table
-  const { data: rdIntegration, refetch: refetchRDIntegration } = useQuery({
-    queryKey: ["rd-integration-config", empresaId],
+  // Fetch linked RD organizations from N:N table
+  const { data: linkedRDOrgs = [], refetch: refetchRDOrgs } = useQuery({
+    queryKey: ["empresa-rd-orgs", empresaId],
     queryFn: async () => {
-      if (!empresaId) return null;
+      if (!empresaId) return [];
       const { data, error } = await supabase
-        .from("rd_empresa_integrations")
+        .from("empresa_rd_organizacoes")
         .select("*")
         .eq("empresa_id", empresaId)
-        .eq("ativo", true)
-        .single();
+        .eq("active", true);
       
-      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
-      return data as RDIntegrationConfig | null;
+      if (error) throw error;
+      return data as LinkedRDOrg[];
+    },
+    enabled: !!empresaId,
+  });
+
+  // Fetch last sync from empresas table
+  const { data: empresaLastSync } = useQuery({
+    queryKey: ["empresa-last-sync", empresaId],
+    queryFn: async () => {
+      if (!empresaId) return null;
+      const { data } = await supabase
+        .from("empresas")
+        .select("rd_station_last_sync")
+        .eq("id", empresaId)
+        .single();
+      return data?.rd_station_last_sync;
     },
     enabled: !!empresaId,
   });
@@ -192,10 +204,11 @@ const Demandas = () => {
       return data;
     },
     onSuccess: (data) => {
-      toast.success(`Sincronização concluída: ${data.imported} novos, ${data.updated} atualizados`);
+      toast.success(`Sincronização concluída: ${data.imported} novos, ${data.updated} atualizados (${data.organizationsProcessed} org(s))`);
       refetchDemandas();
-      refetchRDIntegration();
+      refetchRDOrgs();
       queryClient.invalidateQueries({ queryKey: ["demandas-historico"] });
+      queryClient.invalidateQueries({ queryKey: ["empresa-last-sync"] });
     },
     onError: (error: Error) => {
       if (error.message === "NEEDS_SETUP") {
@@ -215,9 +228,9 @@ const Demandas = () => {
     concluidos: demandas.filter((d) => d.status === "concluido").length,
   };
 
-  const rdEnabled = rdIntegration?.ativo && rdIntegration?.rd_organization_id;
-  const lastSync = rdIntegration?.last_sync_at 
-    ? formatDistanceToNow(new Date(rdIntegration.last_sync_at), { addSuffix: true, locale: ptBR })
+  const rdEnabled = linkedRDOrgs.length > 0;
+  const lastSync = empresaLastSync
+    ? formatDistanceToNow(new Date(empresaLastSync), { addSuffix: true, locale: ptBR })
     : null;
 
   return (
@@ -236,9 +249,9 @@ const Demandas = () => {
             {/* RD Station Status & Sync */}
             {rdEnabled ? (
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
                   <div className="w-2 h-2 rounded-full bg-purple-500 mr-2" />
-                  RD Station Conectado
+                  RD Station ({linkedRDOrgs.length} org{linkedRDOrgs.length > 1 ? 's' : ''})
                 </Badge>
                 <Button 
                   variant="outline" 
@@ -602,8 +615,9 @@ const Demandas = () => {
           onOpenChange={setConfigModalOpen}
           empresa={empresaAtual}
           onUpdate={() => {
-            refetchRDIntegration();
+            refetchRDOrgs();
             refetchDemandas();
+            queryClient.invalidateQueries({ queryKey: ["empresa-last-sync"] });
           }}
         />
       )}

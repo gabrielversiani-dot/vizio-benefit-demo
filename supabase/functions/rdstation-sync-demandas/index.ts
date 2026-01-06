@@ -36,6 +36,11 @@ interface RDDeal {
   };
 }
 
+interface LinkedOrg {
+  rd_organization_id: string;
+  rd_organization_name: string | null;
+}
+
 function generateRequestId(): string {
   return `rdsync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
@@ -147,37 +152,22 @@ serve(async (req) => {
 
     log(`Empresa: ${empresa.nome} (${empresa.id})`);
 
-    // Get RD integration config from new table
-    const { data: rdConfig, error: rdConfigError } = await adminClient
-      .from('rd_empresa_integrations')
-      .select('*')
+    // Get all active RD organizations linked to this empresa
+    const { data: linkedOrgs, error: linkedOrgsError } = await adminClient
+      .from('empresa_rd_organizacoes')
+      .select('rd_organization_id, rd_organization_name')
       .eq('empresa_id', empresaId)
-      .single();
+      .eq('active', true);
 
-    if (rdConfigError && rdConfigError.code !== 'PGRST116') {
-      throw new Error(`Failed to get RD config: ${rdConfigError.message}`);
+    if (linkedOrgsError) {
+      throw new Error(`Failed to get linked orgs: ${linkedOrgsError.message}`);
     }
 
-    // Check if RD Station is enabled
-    if (!rdConfig || !rdConfig.ativo) {
-      log('RD Station integration not enabled');
+    if (!linkedOrgs || linkedOrgs.length === 0) {
+      log('No RD organizations linked to this empresa');
       return new Response(JSON.stringify({
         success: false,
-        error: 'RD Station integration not enabled for this company',
-        needsSetup: true,
-        requestId,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      });
-    }
-
-    // Check if organization is mapped
-    if (!rdConfig.rd_organization_id) {
-      log('Company not linked to RD Station organization');
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Company not linked to RD Station organization',
+        error: 'No RD organizations linked to this company',
         needsMapping: true,
         requestId,
       }), {
@@ -186,8 +176,7 @@ serve(async (req) => {
       });
     }
 
-    const rdOrgId = rdConfig.rd_organization_id;
-    log(`RD Organization ID: ${rdOrgId}`);
+    log(`Found ${linkedOrgs.length} linked RD organizations: ${linkedOrgs.map(o => o.rd_organization_name || o.rd_organization_id).join(', ')}`);
 
     // Create sync log entry
     const { data: syncLog, error: syncLogError } = await adminClient
@@ -206,94 +195,62 @@ serve(async (req) => {
       syncLogId = syncLog.id;
     }
 
-    // Step 1: Get all deals linked to this organization
-    log(`Fetching deals for RD organization: ${rdOrgId}`);
-
-    const dealsResponse = await fetch(
-      `${RD_API_BASE}/deals?token=${rdToken}&organization=${rdOrgId}&limit=200`,
-      { method: 'GET' }
-    );
-
-    if (!dealsResponse.ok) {
-      const errorText = await dealsResponse.text();
-      throw new Error(`RD Station API error (deals): ${dealsResponse.status} - ${errorText}`);
-    }
-
-    const dealsData = await dealsResponse.json();
-    let deals: RDDeal[] = dealsData.deals || [];
+    // Process each linked organization
+    const allTasks: (RDTask & { dealName: string; rdOrgId: string })[] = [];
     
-    // Fallback: filter deals locally by organization if API doesn't filter properly
-    deals = deals.filter(deal => 
-      deal.organization?._id === rdOrgId
-    );
+    for (const linkedOrg of linkedOrgs as LinkedOrg[]) {
+      const rdOrgId = linkedOrg.rd_organization_id;
+      log(`Fetching deals for RD organization: ${rdOrgId} (${linkedOrg.rd_organization_name})`);
 
-    log(`Found ${deals.length} deals for organization after filtering`);
-
-    if (deals.length === 0) {
-      // Update sync log
-      if (syncLogId) {
-        await adminClient
-          .from('rd_station_sync_logs')
-          .update({
-            status: 'success',
-            tasks_imported: 0,
-            tasks_updated: 0,
-            tasks_skipped: 0,
-            completed_at: new Date().toISOString(),
-          })
-          .eq('id', syncLogId);
-      }
-
-      // Update last sync time
-      await adminClient
-        .from('empresas')
-        .update({ rd_station_last_sync: new Date().toISOString() })
-        .eq('id', empresaId);
-
-      log('No deals found for this organization');
-
-      return new Response(JSON.stringify({
-        success: true,
-        message: 'No deals found for this organization',
-        imported: 0,
-        updated: 0,
-        skipped: 0,
-        requestId,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Step 2: Get tasks for each deal
-    const allTasks: (RDTask & { dealName: string })[] = [];
-    
-    for (const deal of deals) {
       try {
-        log(`Fetching tasks for deal ${deal._id} (${deal.name})`);
-        
-        const tasksResponse = await fetch(
-          `${RD_API_BASE}/tasks?token=${rdToken}&deal_id=${deal._id}&limit=200`,
+        const dealsResponse = await fetch(
+          `${RD_API_BASE}/deals?token=${rdToken}&organization=${rdOrgId}&limit=200`,
           { method: 'GET' }
         );
 
-        if (tasksResponse.ok) {
-          const tasksData = await tasksResponse.json();
-          const tasks: RDTask[] = tasksData.tasks || [];
-          tasks.forEach(task => {
-            allTasks.push({ ...task, dealName: deal.name });
-          });
-          log(`Found ${tasks.length} tasks for deal ${deal.name}`);
-        } else {
-          log(`Failed to fetch tasks for deal ${deal._id}: ${tasksResponse.status}`);
+        if (!dealsResponse.ok) {
+          log(`Failed to fetch deals for org ${rdOrgId}: ${dealsResponse.status}`);
+          continue;
+        }
+
+        const dealsData = await dealsResponse.json();
+        let deals: RDDeal[] = dealsData.deals || [];
+        
+        // Fallback: filter deals locally by organization if API doesn't filter properly
+        deals = deals.filter(deal => deal.organization?._id === rdOrgId);
+
+        log(`Found ${deals.length} deals for organization ${rdOrgId}`);
+
+        // Get tasks for each deal
+        for (const deal of deals) {
+          try {
+            const tasksResponse = await fetch(
+              `${RD_API_BASE}/tasks?token=${rdToken}&deal_id=${deal._id}&limit=200`,
+              { method: 'GET' }
+            );
+
+            if (tasksResponse.ok) {
+              const tasksData = await tasksResponse.json();
+              const tasks: RDTask[] = tasksData.tasks || [];
+              tasks.forEach(task => {
+                allTasks.push({ ...task, dealName: deal.name, rdOrgId });
+              });
+              if (tasks.length > 0) {
+                log(`Found ${tasks.length} tasks for deal ${deal.name}`);
+              }
+            }
+          } catch (err) {
+            log(`Error fetching tasks for deal ${deal._id}: ${err}`);
+          }
         }
       } catch (err) {
-        log(`Error fetching tasks for deal ${deal._id}: ${err}`);
+        log(`Error processing org ${rdOrgId}: ${err}`);
       }
     }
 
-    log(`Total tasks found: ${allTasks.length}`);
+    log(`Total tasks found across all organizations: ${allTasks.length}`);
 
-    // Step 3: Upsert tasks into demandas table
+    // Upsert tasks into demandas table
     let imported = 0;
     let updated = 0;
     let skipped = 0;
@@ -317,6 +274,7 @@ serve(async (req) => {
           rd_task_id: task._id,
           rd_deal_id: task.deal_id || task.deal?._id,
           rd_deal_name: task.dealName,
+          rd_organization_id: task.rdOrgId,
           titulo: task.subject || 'Tarefa sem título',
           descricao: task.notes || '',
           tipo: newTipo,
@@ -408,11 +366,12 @@ serve(async (req) => {
         .eq('id', syncLogId);
     }
 
-    // Update last sync time in new table
+    // Update last sync time in new table for all linked orgs
     await adminClient
-      .from('rd_empresa_integrations')
-      .update({ last_sync_at: new Date().toISOString() })
-      .eq('empresa_id', empresaId);
+      .from('empresa_rd_organizacoes')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('empresa_id', empresaId)
+      .eq('active', true);
 
     // Also update legacy field for backward compatibility
     await adminClient
@@ -428,6 +387,7 @@ serve(async (req) => {
       updated,
       skipped,
       total: allTasks.length,
+      organizationsProcessed: linkedOrgs.length,
       requestId,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

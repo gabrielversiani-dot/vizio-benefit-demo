@@ -521,6 +521,7 @@ export type Database = {
           raw_payload: Json | null
           rd_deal_id: string | null
           rd_deal_name: string | null
+          rd_organization_id: string | null
           rd_task_id: string | null
           responsavel_id: string | null
           responsavel_nome: string | null
@@ -543,6 +544,7 @@ export type Database = {
           raw_payload?: Json | null
           rd_deal_id?: string | null
           rd_deal_name?: string | null
+          rd_organization_id?: string | null
           rd_task_id?: string | null
           responsavel_id?: string | null
           responsavel_nome?: string | null
@@ -565,6 +567,7 @@ export type Database = {
           raw_payload?: Json | null
           rd_deal_id?: string | null
           rd_deal_name?: string | null
+          rd_organization_id?: string | null
           rd_task_id?: string | null
           responsavel_id?: string | null
           responsavel_nome?: string | null
@@ -634,6 +637,47 @@ export type Database = {
           },
           {
             foreignKeyName: "demandas_historico_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      empresa_rd_organizacoes: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          empresa_id: string
+          id: string
+          rd_organization_id: string
+          rd_organization_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          empresa_id: string
+          id?: string
+          rd_organization_id: string
+          rd_organization_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          empresa_id?: string
+          id?: string
+          rd_organization_id?: string
+          rd_organization_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empresa_rd_organizacoes_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
@@ -1320,50 +1364,6 @@ export type Database = {
             foreignKeyName: "promocao_saude_materiais_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      rd_empresa_integrations: {
-        Row: {
-          ativo: boolean
-          created_at: string
-          created_by: string | null
-          empresa_id: string
-          id: string
-          last_sync_at: string | null
-          rd_organization_id: string
-          rd_organization_name: string | null
-          updated_at: string
-        }
-        Insert: {
-          ativo?: boolean
-          created_at?: string
-          created_by?: string | null
-          empresa_id: string
-          id?: string
-          last_sync_at?: string | null
-          rd_organization_id: string
-          rd_organization_name?: string | null
-          updated_at?: string
-        }
-        Update: {
-          ativo?: boolean
-          created_at?: string
-          created_by?: string | null
-          empresa_id?: string
-          id?: string
-          last_sync_at?: string | null
-          rd_organization_id?: string
-          rd_organization_name?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "rd_empresa_integrations_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: true
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },

@@ -60,3 +60,12 @@ verify_jwt = false
 
 [functions.rdstation-link-empresa]
 verify_jwt = false
+
+[functions.rd-sync-sinistro-vida]
+verify_jwt = false
+
+[functions.rd-webhook-sinistro-vida]
+verify_jwt = false
+
+[functions.seed-demo-data]
+verify_jwt = false

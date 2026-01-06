@@ -393,7 +393,7 @@ const Demandas = () => {
                   </div>
                 ) : demandas.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
-                    {!rdEnabled && isAdminVizio ? (
+                    {isAdmin && !rdEnabled && isAdminVizio ? (
                       <div className="space-y-3">
                         <p>Nenhuma demanda encontrada</p>
                         <Button 
@@ -405,7 +405,7 @@ const Demandas = () => {
                           Vincular RD Station
                         </Button>
                       </div>
-                    ) : rdEnabled ? (
+                    ) : isAdmin && rdEnabled ? (
                       <div className="space-y-3">
                         <p>Nenhuma demanda encontrada</p>
                         <Button 
@@ -419,7 +419,11 @@ const Demandas = () => {
                         </Button>
                       </div>
                     ) : (
-                      <p>Nenhuma demanda encontrada</p>
+                      <div className="space-y-2">
+                        <ClipboardList className="h-12 w-12 mx-auto opacity-30" />
+                        <p>Nenhuma demanda encontrada para este filtro</p>
+                        <p className="text-sm">As demandas da sua empresa aparecerão aqui</p>
+                      </div>
                     )}
                   </div>
                 ) : (
@@ -433,8 +437,8 @@ const Demandas = () => {
                           <TableHead>Prioridade</TableHead>
                           <TableHead>Origem</TableHead>
                           <TableHead>Responsável</TableHead>
-                          <TableHead>Prazo</TableHead>
                           <TableHead>Data Criação</TableHead>
+                          <TableHead>SLA</TableHead>
                           <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -480,12 +484,19 @@ const Demandas = () => {
                               {demanda.responsavel_nome || "-"}
                             </TableCell>
                             <TableCell>
-                              {demanda.prazo
-                                ? format(new Date(demanda.prazo), "dd/MM/yyyy", { locale: ptBR })
-                                : "-"}
+                              {format(new Date(demanda.created_at), "dd/MM/yyyy", { locale: ptBR })}
                             </TableCell>
                             <TableCell>
-                              {format(new Date(demanda.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                              {demanda.status === 'concluido' && demanda.concluida_em ? (
+                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
+                                  <Clock className="h-3 w-3 mr-1" />
+                                  {formatSLA(calculateSLASeconds(demanda.created_at, demanda.concluida_em))}
+                                </Badge>
+                              ) : demanda.status === 'concluido' ? (
+                                <span className="text-muted-foreground text-xs">-</span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Em aberto</span>
+                              )}
                             </TableCell>
                             <TableCell className="text-right">
                               <Button 

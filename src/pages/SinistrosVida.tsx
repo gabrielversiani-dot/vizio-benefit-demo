@@ -60,7 +60,7 @@ export default function SinistrosVida() {
   const [selectedSinistro, setSelectedSinistro] = useState<any>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const { empresaSelecionada, isAdminVizio } = useEmpresa();
-  const { canManageSinistrosVida } = usePermissions();
+  const { canCreateSinistrosVida, canManageSinistrosVida } = usePermissions();
 
   // Fetch sinistros from database
   const { data: sinistros = [], isLoading } = useQuery({
@@ -172,7 +172,7 @@ export default function SinistrosVida() {
               Gestão completa de sinistros de seguro de vida em grupo
             </p>
           </div>
-          {canManageSinistrosVida && (
+          {canCreateSinistrosVida && (
             <Button className="gap-2" onClick={() => setIsFormOpen(true)}>
               <Plus className="h-4 w-4" />
               Novo Sinistro
@@ -182,8 +182,6 @@ export default function SinistrosVida() {
 
         {/* Form Modal */}
         <SinistroFormModal open={isFormOpen} onOpenChange={setIsFormOpen} />
-        </div>
-
         {/* KPIs */}
         <div className="grid gap-6 md:grid-cols-4">
           <Card>

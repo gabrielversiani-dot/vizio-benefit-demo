@@ -43,6 +43,10 @@ export type Permission =
   | "demandas:create"
   | "demandas:edit"
   | "demandas:view"
+  // Sinistros Vida
+  | "sinistros_vida:view"
+  | "sinistros_vida:create"
+  | "sinistros_vida:manage"
   // Admin
   | "admin:view"
   | "admin:import"
@@ -93,6 +97,10 @@ const rolePermissions: Record<string, Permission[]> = {
     "demandas:create",
     "demandas:edit",
     "demandas:view",
+    // Sinistros Vida - Full
+    "sinistros_vida:view",
+    "sinistros_vida:create",
+    "sinistros_vida:manage",
     // Admin - Full
     "admin:view",
     "admin:import",
@@ -142,6 +150,10 @@ const rolePermissions: Record<string, Permission[]> = {
     "demandas:create",
     "demandas:edit",
     "demandas:view",
+    // Sinistros Vida - Full
+    "sinistros_vida:view",
+    "sinistros_vida:create",
+    "sinistros_vida:manage",
     // Admin - Partial
     "configuracoes:view",
   ],
@@ -165,6 +177,9 @@ const rolePermissions: Record<string, Permission[]> = {
     // Demandas - View + Create (can open new demands)
     "demandas:view",
     "demandas:create",
+    // Sinistros Vida - View + Create (can open claims)
+    "sinistros_vida:view",
+    "sinistros_vida:create",
     // Client can access Configurações (limited)
     "configuracoes:view",
   ],
@@ -187,6 +202,8 @@ const rolePermissions: Record<string, Permission[]> = {
     "movimentacao:view",
     // Demandas - View only
     "demandas:view",
+    // Sinistros Vida - View only
+    "sinistros_vida:view",
     // Client can access Configurações (limited)
     "configuracoes:view",
   ],
@@ -272,6 +289,11 @@ export function usePermissions() {
     canViewDemandas: hasPermission("demandas:view"),
     canCreateDemandas: hasPermission("demandas:create"),
     canManageDemandas: hasPermission("demandas:edit"),
+    
+    // Sinistros Vida
+    canViewSinistrosVida: hasPermission("sinistros_vida:view"),
+    canCreateSinistrosVida: hasPermission("sinistros_vida:create"),
+    canManageSinistrosVida: hasPermission("sinistros_vida:manage"),
     
     // Admin
     canViewAdmin,

@@ -121,7 +121,7 @@ export default function SinistrosVida() {
     },
   });
 
-  // Sync mutation
+  // Sync mutation (push pending sinistros to RD)
   const syncMutation = useMutation({
     mutationFn: async () => {
       if (!empresaSelecionada) throw new Error("Nenhuma empresa selecionada");
@@ -147,7 +147,7 @@ export default function SinistrosVida() {
       for (const sinistro of pendingSinistros) {
         try {
           const response = await supabase.functions.invoke('rd-sync-sinistro-vida', {
-            body: { sinistroId: sinistro.id },
+            body: { sinistroId: sinistro.id, action: 'push' },
           });
           
           if (response.data?.success) synced++;
@@ -169,6 +169,40 @@ export default function SinistrosVida() {
     },
     onError: (error: Error) => {
       toast.error(error.message || "Erro ao sincronizar");
+    },
+  });
+
+  // Pull mutation (import sinistros from RD)
+  const pullMutation = useMutation({
+    mutationFn: async () => {
+      if (!empresaSelecionada) throw new Error("Nenhuma empresa selecionada");
+      
+      const response = await supabase.functions.invoke('rd-sync-sinistro-vida', {
+        body: { empresaId: empresaSelecionada, action: 'pull' },
+      });
+      
+      if (response.error) {
+        throw new Error(response.error.message || 'Erro ao importar do RD');
+      }
+      
+      if (!response.data?.success) {
+        throw new Error(response.data?.error || 'Erro ao importar do RD');
+      }
+      
+      return response.data;
+    },
+    onSuccess: (data) => {
+      const msg = `Importação concluída: ${data.created || 0} novos, ${data.updated || 0} atualizados`;
+      if (data.errors > 0) {
+        toast.warning(`${msg} (${data.errors} erro(s))`);
+      } else {
+        toast.success(msg);
+      }
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['sinistros-vida-historico-geral'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Erro ao importar do RD Station");
     },
   });
 
@@ -233,6 +267,18 @@ export default function SinistrosVida() {
               </Badge>
             )}
             
+            {isAdminVizio && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => pullMutation.mutate()}
+                disabled={pullMutation.isPending}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${pullMutation.isPending ? 'animate-spin' : ''}`} />
+                {pullMutation.isPending ? 'Importando...' : 'Importar do RD'}
+              </Button>
+            )}
+            
             {isAdminVizio && rdPending > 0 && (
               <Button 
                 variant="outline" 
@@ -241,7 +287,7 @@ export default function SinistrosVida() {
                 disabled={syncMutation.isPending}
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-                {syncMutation.isPending ? 'Sincronizando...' : 'Sincronizar RD'}
+                {syncMutation.isPending ? 'Sincronizando...' : `Enviar ${rdPending} ao RD`}
               </Button>
             )}
             

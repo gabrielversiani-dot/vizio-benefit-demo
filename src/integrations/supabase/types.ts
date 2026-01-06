@@ -518,7 +518,13 @@ export type Database = {
           id: string
           prazo: string | null
           prioridade: Database["public"]["Enums"]["prioridade_demanda"]
+          raw_payload: Json | null
+          rd_deal_id: string | null
+          rd_deal_name: string | null
+          rd_task_id: string | null
           responsavel_id: string | null
+          responsavel_nome: string | null
+          source: string
           status: Database["public"]["Enums"]["status_demanda"]
           tipo: Database["public"]["Enums"]["tipo_demanda"]
           titulo: string
@@ -534,7 +540,13 @@ export type Database = {
           id?: string
           prazo?: string | null
           prioridade?: Database["public"]["Enums"]["prioridade_demanda"]
+          raw_payload?: Json | null
+          rd_deal_id?: string | null
+          rd_deal_name?: string | null
+          rd_task_id?: string | null
           responsavel_id?: string | null
+          responsavel_nome?: string | null
+          source?: string
           status?: Database["public"]["Enums"]["status_demanda"]
           tipo: Database["public"]["Enums"]["tipo_demanda"]
           titulo: string
@@ -550,7 +562,13 @@ export type Database = {
           id?: string
           prazo?: string | null
           prioridade?: Database["public"]["Enums"]["prioridade_demanda"]
+          raw_payload?: Json | null
+          rd_deal_id?: string | null
+          rd_deal_name?: string | null
+          rd_task_id?: string | null
           responsavel_id?: string | null
+          responsavel_nome?: string | null
+          source?: string
           status?: Database["public"]["Enums"]["status_demanda"]
           tipo?: Database["public"]["Enums"]["tipo_demanda"]
           titulo?: string

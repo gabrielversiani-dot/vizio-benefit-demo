@@ -15,6 +15,7 @@ import { useEmpresa } from "@/contexts/EmpresaContext";
 import { RDStationConfigModal } from "@/components/Demandas/RDStationConfigModal";
 import { DemandaDetailModal } from "@/components/Demandas/DemandaDetailModal";
 import { HistoricoGeralTimeline } from "@/components/Demandas/HistoricoGeralTimeline";
+import { PrioridadeEditor } from "@/components/Demandas/PrioridadeEditor";
 import { toast } from "sonner";
 import { formatSLA, calculateSLASeconds } from "@/lib/formatSLA";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -55,6 +56,7 @@ interface Demanda {
   tipo: string;
   status: string;
   prioridade: string;
+  prioridade_manual?: boolean;
   prazo: string | null;
   created_at: string;
   concluida_em?: string | null;
@@ -465,12 +467,13 @@ const Demandas = () => {
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              <Badge
-                                variant="secondary"
-                                className={prioridadeConfig[demanda.prioridade]?.color || ""}
-                              >
-                                {prioridadeConfig[demanda.prioridade]?.label || demanda.prioridade}
-                              </Badge>
+                              <PrioridadeEditor
+                                demandaId={demanda.id}
+                                prioridade={demanda.prioridade}
+                                prioridadeManual={demanda.prioridade_manual}
+                                canEdit={isAdmin}
+                                empresaId={demanda.empresa_id}
+                              />
                             </TableCell>
                             <TableCell>
                               <Badge

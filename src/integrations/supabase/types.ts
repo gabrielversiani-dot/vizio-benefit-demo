@@ -519,6 +519,9 @@ export type Database = {
           id: string
           prazo: string | null
           prioridade: Database["public"]["Enums"]["prioridade_demanda"]
+          prioridade_manual: boolean | null
+          prioridade_updated_at: string | null
+          prioridade_updated_by: string | null
           raw_payload: Json | null
           rd_deal_id: string | null
           rd_deal_name: string | null
@@ -543,6 +546,9 @@ export type Database = {
           id?: string
           prazo?: string | null
           prioridade?: Database["public"]["Enums"]["prioridade_demanda"]
+          prioridade_manual?: boolean | null
+          prioridade_updated_at?: string | null
+          prioridade_updated_by?: string | null
           raw_payload?: Json | null
           rd_deal_id?: string | null
           rd_deal_name?: string | null
@@ -567,6 +573,9 @@ export type Database = {
           id?: string
           prazo?: string | null
           prioridade?: Database["public"]["Enums"]["prioridade_demanda"]
+          prioridade_manual?: boolean | null
+          prioridade_updated_at?: string | null
+          prioridade_updated_by?: string | null
           raw_payload?: Json | null
           rd_deal_id?: string | null
           rd_deal_name?: string | null

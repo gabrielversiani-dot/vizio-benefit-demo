@@ -27,6 +27,7 @@ const eventConfig: Record<string, { icon: React.ComponentType<{ className?: stri
   created: { icon: PlusCircle, color: "text-green-600", bgColor: "bg-green-100" },
   status_changed: { icon: ArrowRight, color: "text-blue-600", bgColor: "bg-blue-100" },
   completed: { icon: CheckCircle2, color: "text-green-600", bgColor: "bg-green-100" },
+  priority_changed: { icon: AlertCircle, color: "text-orange-600", bgColor: "bg-orange-100" },
   comment_added: { icon: MessageSquare, color: "text-slate-600", bgColor: "bg-slate-100" },
   attachment_added: { icon: Paperclip, color: "text-slate-600", bgColor: "bg-slate-100" },
   rd_sync: { icon: RefreshCw, color: "text-purple-600", bgColor: "bg-purple-100" },

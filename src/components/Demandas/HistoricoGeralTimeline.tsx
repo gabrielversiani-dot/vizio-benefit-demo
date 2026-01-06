@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ArrowUpDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Filter, Search, Clock, X, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, RefreshCw, PlusCircle } from "lucide-react";
 import { useDemandaHistoricoGeral, HistoricoEvent } from "@/hooks/useDemandaHistorico";
@@ -15,6 +16,7 @@ const eventTypeOptions = [
   { value: "todos", label: "Todos os Eventos" },
   { value: "created", label: "Criação" },
   { value: "status_changed", label: "Mudança de Status" },
+  { value: "priority_changed", label: "Mudança de Prioridade" },
   { value: "completed", label: "Concluídos" },
   { value: "rd_sync", label: "Sincronização RD" },
   { value: "comment_added", label: "Comentários" },
@@ -132,6 +134,8 @@ function EventIcon({ type }: { type: string | null }) {
       return <PlusCircle className="h-4 w-4 text-green-600" />;
     case 'completed':
       return <CheckCircle2 className="h-4 w-4 text-green-600" />;
+    case 'priority_changed':
+      return <ArrowUpDown className="h-4 w-4 text-orange-600" />;
     case 'status_changed':
       return <AlertCircle className="h-4 w-4 text-blue-600" />;
     case 'rd_sync':

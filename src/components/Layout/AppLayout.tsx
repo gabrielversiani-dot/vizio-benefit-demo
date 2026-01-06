@@ -9,10 +9,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { LogOut, Building2, Activity } from "lucide-react";
+import { LogOut, Building2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useEmpresa } from "@/contexts/EmpresaContext";
 import { Link } from "react-router-dom";
+import { BrandLogo } from "@/components/Brand/BrandLogo";
+
 interface AppLayoutProps {
   children: React.ReactNode;
 }
@@ -42,34 +44,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </div>
 
                 {/* Logo in header for mobile/tablet */}
-                <Link to="/dashboard" className="lg:hidden flex items-center">
-                  {/* Dark mode: logo with dark background */}
-                  <img 
-                    src="/branding/vizio-logo-dark-bg.jpeg" 
-                    alt="Vizio Capital" 
-                    loading="lazy"
-                    className="hidden dark:block h-8 w-auto object-contain rounded"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = 'none';
-                    }}
-                  />
-                  {/* Light mode: dark text logo */}
-                  <img 
-                    src="/branding/vizio-logo.png" 
-                    alt="Vizio Capital" 
-                    loading="lazy"
-                    className="block dark:hidden h-8 w-auto object-contain"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = 'none';
-                      const fallback = document.getElementById('header-logo-fallback');
-                      if (fallback) fallback.style.display = 'flex';
-                    }}
-                  />
-                  <div id="header-logo-fallback" className="hidden h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                    <Activity className="h-5 w-5 text-primary-foreground" />
-                  </div>
+                <Link to="/dashboard" className="lg:hidden">
+                  <BrandLogo size="header" />
                 </Link>
                 
                 {!loading && isAdminVizio && empresas.length > 0 && (

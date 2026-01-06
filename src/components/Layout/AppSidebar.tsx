@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { LayoutDashboard, DollarSign, Activity, Users, FileText, Settings, Shield, FileSignature, RefreshCw, ClipboardList, Heart, Bot, FlaskConical, Construction } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { Link } from "react-router-dom";
@@ -13,6 +12,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { usePermissions } from "@/hooks/usePermissions";
+import { BrandLogo } from "@/components/Brand/BrandLogo";
 
 // Menu items for all users (clients see only these)
 const clientMenuItems = [
@@ -51,42 +51,8 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
-        <Link to="/dashboard" className="flex items-center gap-2 group">
-          <div className="relative flex items-center justify-center transition-colors">
-            {/* Dark mode: logo with dark background */}
-            <img 
-              src="/branding/vizio-logo-dark-bg.jpeg" 
-              alt="Vizio Capital" 
-              loading="lazy"
-              className="hidden dark:block h-10 w-auto object-contain rounded"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-              }}
-            />
-            {/* Light mode: dark text logo */}
-            <img 
-              src="/branding/vizio-logo.png" 
-              alt="Vizio Capital" 
-              loading="lazy"
-              className="block dark:hidden h-10 w-auto object-contain"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-                const fallback = document.getElementById('sidebar-logo-fallback');
-                if (fallback) fallback.style.display = 'flex';
-              }}
-            />
-            <div id="sidebar-logo-fallback" className="hidden items-center gap-3">
-              <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-sidebar-primary">
-                <Activity className="h-6 w-6 text-sidebar-primary-foreground" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-sidebar-foreground">Vizio Capital</h2>
-                <p className="text-xs text-sidebar-foreground/60">Gestão de Benefícios</p>
-              </div>
-            </div>
-          </div>
+        <Link to="/dashboard" className="block">
+          <BrandLogo size="sidebar" />
         </Link>
       </SidebarHeader>
 

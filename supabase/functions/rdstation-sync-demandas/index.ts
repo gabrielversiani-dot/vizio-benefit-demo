@@ -37,7 +37,7 @@ interface RDDeal {
 }
 
 function generateRequestId(): string {
-  return `rdstation-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `rdsync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
 function mapRDStatusToLocal(done: boolean): string {
@@ -65,9 +65,12 @@ serve(async (req) => {
   const requestId = generateRequestId();
   const logs: string[] = [];
   const log = (msg: string) => {
+    const logLine = `[${new Date().toISOString()}] ${msg}`;
     console.log(`[${requestId}] ${msg}`);
-    logs.push(`[${new Date().toISOString()}] ${msg}`);
+    logs.push(logLine);
   };
+
+  let syncLogId: string | null = null;
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -75,7 +78,16 @@ serve(async (req) => {
     const rdToken = Deno.env.get('RD_STATION_API_TOKEN');
 
     if (!rdToken) {
-      throw new Error('RD_STATION_API_TOKEN not configured');
+      log('RD Station token not configured');
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'RD_STATION_API_TOKEN not configured',
+        needsToken: true,
+        requestId,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      });
     }
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
@@ -94,13 +106,33 @@ serve(async (req) => {
       throw new Error('Invalid or expired token');
     }
 
-    const { empresaId, forceSync = false } = await req.json();
+    const body = await req.json();
+    const { empresaId, forceSync = false } = body;
     
     if (!empresaId) {
       throw new Error('empresaId is required');
     }
 
-    log(`Starting sync for empresa ${empresaId} by user ${user.id}`);
+    log(`Starting sync for empresa ${empresaId} by user ${user.id} (forceSync: ${forceSync})`);
+
+    // Get user role - can be admin_vizio or user from the same empresa
+    const { data: userProfile } = await adminClient
+      .from('profiles')
+      .select('empresa_id')
+      .eq('id', user.id)
+      .single();
+
+    const { data: isAdminVizio } = await adminClient
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'admin_vizio')
+      .single();
+
+    // Permission check: user must be admin_vizio OR belong to the same empresa
+    if (!isAdminVizio && userProfile?.empresa_id !== empresaId) {
+      throw new Error('You do not have permission to sync this empresa');
+    }
 
     // Get empresa with RD Station config
     const { data: empresa, error: empresaError } = await adminClient
@@ -113,7 +145,11 @@ serve(async (req) => {
       throw new Error('Empresa not found');
     }
 
+    log(`Empresa: ${empresa.nome} (${empresa.id})`);
+
+    // Check if RD Station is enabled
     if (!empresa.rd_station_enabled) {
+      log('RD Station integration not enabled');
       return new Response(JSON.stringify({
         success: false,
         error: 'RD Station integration not enabled for this company',
@@ -125,7 +161,9 @@ serve(async (req) => {
       });
     }
 
+    // Check if organization is mapped
     if (!empresa.rd_station_organization_id) {
+      log('Company not linked to RD Station organization');
       return new Response(JSON.stringify({
         success: false,
         error: 'Company not linked to RD Station organization',
@@ -136,6 +174,9 @@ serve(async (req) => {
         status: 400,
       });
     }
+
+    const rdOrgId = empresa.rd_station_organization_id;
+    log(`RD Organization ID: ${rdOrgId}`);
 
     // Create sync log entry
     const { data: syncLog, error: syncLogError } = await adminClient
@@ -150,12 +191,13 @@ serve(async (req) => {
 
     if (syncLogError) {
       log(`Failed to create sync log: ${syncLogError.message}`);
+    } else {
+      syncLogId = syncLog.id;
     }
 
-    const rdOrgId = empresa.rd_station_organization_id;
+    // Step 1: Get all deals linked to this organization
     log(`Fetching deals for RD organization: ${rdOrgId}`);
 
-    // Step 1: Get all deals linked to this organization
     const dealsResponse = await fetch(
       `${RD_API_BASE}/deals?token=${rdToken}&organization=${rdOrgId}&limit=200`,
       { method: 'GET' }
@@ -167,12 +209,18 @@ serve(async (req) => {
     }
 
     const dealsData = await dealsResponse.json();
-    const deals: RDDeal[] = dealsData.deals || [];
-    log(`Found ${deals.length} deals for organization`);
+    let deals: RDDeal[] = dealsData.deals || [];
+    
+    // Fallback: filter deals locally by organization if API doesn't filter properly
+    deals = deals.filter(deal => 
+      deal.organization?._id === rdOrgId
+    );
+
+    log(`Found ${deals.length} deals for organization after filtering`);
 
     if (deals.length === 0) {
       // Update sync log
-      if (syncLog) {
+      if (syncLogId) {
         await adminClient
           .from('rd_station_sync_logs')
           .update({
@@ -182,7 +230,7 @@ serve(async (req) => {
             tasks_skipped: 0,
             completed_at: new Date().toISOString(),
           })
-          .eq('id', syncLog.id);
+          .eq('id', syncLogId);
       }
 
       // Update last sync time
@@ -190,6 +238,8 @@ serve(async (req) => {
         .from('empresas')
         .update({ rd_station_last_sync: new Date().toISOString() })
         .eq('id', empresaId);
+
+      log('No deals found for this organization');
 
       return new Response(JSON.stringify({
         success: true,
@@ -208,6 +258,8 @@ serve(async (req) => {
     
     for (const deal of deals) {
       try {
+        log(`Fetching tasks for deal ${deal._id} (${deal.name})`);
+        
         const tasksResponse = await fetch(
           `${RD_API_BASE}/tasks?token=${rdToken}&deal_id=${deal._id}&limit=200`,
           { method: 'GET' }
@@ -219,7 +271,9 @@ serve(async (req) => {
           tasks.forEach(task => {
             allTasks.push({ ...task, dealName: deal.name });
           });
-          log(`Found ${tasks.length} tasks for deal ${deal._id} (${deal.name})`);
+          log(`Found ${tasks.length} tasks for deal ${deal.name}`);
+        } else {
+          log(`Failed to fetch tasks for deal ${deal._id}: ${tasksResponse.status}`);
         }
       } catch (err) {
         log(`Error fetching tasks for deal ${deal._id}: ${err}`);
@@ -235,13 +289,16 @@ serve(async (req) => {
 
     for (const task of allTasks) {
       try {
-        // Check if task already exists
+        // Check if task already exists for THIS empresa
         const { data: existing } = await adminClient
           .from('demandas')
           .select('id, status, updated_at')
           .eq('empresa_id', empresaId)
           .eq('rd_task_id', task._id)
           .single();
+
+        const newStatus = mapRDStatusToLocal(task.done);
+        const newTipo = mapRDTypeToLocal(task.type);
 
         const demandaData = {
           empresa_id: empresaId,
@@ -251,15 +308,17 @@ serve(async (req) => {
           rd_deal_name: task.dealName,
           titulo: task.subject || 'Tarefa sem título',
           descricao: task.notes || '',
-          tipo: mapRDTypeToLocal(task.type) as any,
-          status: mapRDStatusToLocal(task.done) as any,
+          tipo: newTipo,
+          status: newStatus,
           prazo: task.date ? task.date.split('T')[0] : null,
           responsavel_nome: task.users?.[0]?.name || null,
           criado_por: user.id,
-          raw_payload: task as any,
+          raw_payload: task as unknown as Record<string, unknown>,
         };
 
         if (existing) {
+          const oldStatus = existing.status;
+
           // Update existing record
           const { error: updateError } = await adminClient
             .from('demandas')
@@ -276,19 +335,19 @@ serve(async (req) => {
             updated++;
             
             // Log status change if different
-            const newStatus = mapRDStatusToLocal(task.done);
-            if (existing.status !== newStatus) {
+            if (oldStatus !== newStatus) {
               await adminClient
                 .from('demandas_historico')
                 .insert({
                   demanda_id: existing.id,
                   empresa_id: empresaId,
                   tipo_evento: 'sync',
-                  status_anterior: existing.status,
+                  status_anterior: oldStatus,
                   status_novo: newStatus,
-                  descricao: 'Atualização via sincronização RD Station',
+                  descricao: `Status alterado via sincronização RD Station`,
                   usuario_nome: 'Sistema RD Station',
                 });
+              log(`Status changed for ${task._id}: ${oldStatus} -> ${newStatus}`);
             }
           }
         } else {
@@ -312,7 +371,7 @@ serve(async (req) => {
                 demanda_id: newDemanda.id,
                 empresa_id: empresaId,
                 tipo_evento: 'sync',
-                status_novo: demandaData.status,
+                status_novo: newStatus,
                 descricao: 'Importado do RD Station CRM',
                 usuario_nome: 'Sistema RD Station',
               });
@@ -325,7 +384,7 @@ serve(async (req) => {
     }
 
     // Update sync log
-    if (syncLog) {
+    if (syncLogId) {
       await adminClient
         .from('rd_station_sync_logs')
         .update({
@@ -335,7 +394,7 @@ serve(async (req) => {
           tasks_skipped: skipped,
           completed_at: new Date().toISOString(),
         })
-        .eq('id', syncLog.id);
+        .eq('id', syncLogId);
     }
 
     // Update last sync time
@@ -353,7 +412,6 @@ serve(async (req) => {
       skipped,
       total: allTasks.length,
       requestId,
-      logs,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -361,6 +419,24 @@ serve(async (req) => {
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     log(`Error: ${errorMessage}`);
+
+    // Update sync log with error
+    if (syncLogId) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+
+      await adminClient
+        .from('rd_station_sync_logs')
+        .update({
+          status: 'error',
+          error_message: errorMessage,
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', syncLogId);
+    }
     
     return new Response(JSON.stringify({
       success: false,

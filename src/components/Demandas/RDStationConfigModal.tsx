@@ -4,9 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Search, Building2, Link2, Unlink, CheckCircle2 } from "lucide-react";
+import { Loader2, Search, Building2, Link2, Unlink, CheckCircle2, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -19,7 +18,7 @@ interface RDOrganization {
 interface Empresa {
   id: string;
   nome: string;
-  rd_station_enabled?: boolean;
+  rd_station_enabled?: boolean | null;
   rd_station_organization_id?: string | null;
   rd_station_org_name_snapshot?: string | null;
 }
@@ -32,7 +31,6 @@ interface RDStationConfigModalProps {
 }
 
 export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: RDStationConfigModalProps) {
-  const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -40,6 +38,7 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
   const [selectedOrg, setSelectedOrg] = useState<RDOrganization | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsToken, setNeedsToken] = useState(false);
 
   useEffect(() => {
     if (empresa && open) {
@@ -52,6 +51,10 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
       } else {
         setSelectedOrg(null);
       }
+      setError(null);
+      setNeedsToken(false);
+      setOrganizations([]);
+      setSearchQuery("");
     }
   }, [empresa, open]);
 
@@ -63,41 +66,36 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
 
     setSearching(true);
     setError(null);
+    setNeedsToken(false);
     
     try {
       const { data: session } = await supabase.auth.getSession();
-      const response = await supabase.functions.invoke('rdstation-list-organizations', {
-        headers: {
-          Authorization: `Bearer ${session.session?.access_token}`,
-        },
-        body: null,
-      });
-
-      // Add query params manually
+      
       const { data, error: fnError } = await supabase.functions.invoke('rdstation-list-organizations', {
         headers: {
           Authorization: `Bearer ${session.session?.access_token}`,
+        },
+        body: {
+          q: searchQuery.trim(),
+          page: 1,
         },
       });
 
       if (fnError) throw fnError;
 
       if (!data.success) {
+        if (data.needsToken) {
+          setNeedsToken(true);
+          throw new Error('Token do RD Station não configurado');
+        }
         throw new Error(data.error || 'Erro ao buscar organizações');
       }
-
-      // Filter by search query client-side
-      const filtered = (data.organizations || []).filter((org: RDOrganization) =>
-        org.name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
       
-      setOrganizations(filtered);
-    } catch (err: any) {
+      setOrganizations(data.organizations || []);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar organizações no RD Station';
       console.error('Search error:', err);
-      setError(err.message || 'Erro ao buscar organizações no RD Station');
-      if (err.message?.includes('token')) {
-        setError('Token do RD Station não configurado. Adicione o secret RD_STATION_API_TOKEN.');
-      }
+      setError(errorMessage);
     } finally {
       setSearching(false);
     }
@@ -132,9 +130,10 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
       toast.success('Configuração do RD Station salva com sucesso!');
       onUpdate();
       onOpenChange(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao salvar configuração';
       console.error('Save error:', err);
-      setError(err.message || 'Erro ao salvar configuração');
+      setError(errorMessage);
       toast.error('Erro ao salvar configuração');
     } finally {
       setSaving(false);
@@ -159,6 +158,19 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {/* Token warning */}
+          {needsToken && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+              <div>
+                <p className="font-medium text-amber-800">Token não configurado</p>
+                <p className="text-sm text-amber-700">
+                  O secret <code className="bg-amber-100 px-1 rounded">RD_STATION_API_TOKEN</code> precisa ser configurado nas configurações do projeto.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Enable/Disable toggle */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
@@ -200,7 +212,7 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && searchOrganizations()}
                 />
-                <Button onClick={searchOrganizations} disabled={searching}>
+                <Button onClick={searchOrganizations} disabled={searching || !searchQuery.trim()}>
                   {searching ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
@@ -234,16 +246,16 @@ export function RDStationConfigModal({ open, onOpenChange, empresa, onUpdate }: 
                 </ScrollArea>
               )}
 
-              {!searching && organizations.length === 0 && searchQuery && (
+              {!searching && organizations.length === 0 && searchQuery && !error && (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  Nenhuma organização encontrada
+                  Nenhuma organização encontrada. Clique em buscar para pesquisar.
                 </p>
               )}
             </div>
           )}
 
           {/* Error message */}
-          {error && (
+          {error && !needsToken && (
             <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3">
               <p className="text-sm text-destructive">{error}</p>
             </div>

@@ -9,10 +9,16 @@ const corsHeaders = {
 
 const RD_API_BASE = 'https://crm.rdstation.com/api/v1';
 
+function generateRequestId(): string {
+  return `rdorg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const requestId = generateRequestId();
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -20,10 +26,12 @@ serve(async (req) => {
     const rdToken = Deno.env.get('RD_STATION_API_TOKEN');
 
     if (!rdToken) {
+      console.log(`[${requestId}] RD Station token not configured`);
       return new Response(JSON.stringify({
         success: false,
         error: 'RD Station API token not configured. Please add RD_STATION_API_TOKEN secret.',
         needsToken: true,
+        requestId,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
@@ -58,13 +66,28 @@ serve(async (req) => {
       throw new Error('Only admin_vizio can access RD Station organizations');
     }
 
-    const url = new URL(req.url);
-    const search = url.searchParams.get('q') || '';
-    const page = url.searchParams.get('page') || '1';
+    // Parse body for POST requests
+    let search = '';
+    let page = 1;
 
-    console.log(`Fetching RD Station organizations - search: "${search}", page: ${page}`);
+    if (req.method === 'POST') {
+      try {
+        const body = await req.json();
+        search = body.q || '';
+        page = body.page || 1;
+      } catch {
+        // Ignore parse errors, use defaults
+      }
+    } else {
+      // Fallback to query params for GET
+      const url = new URL(req.url);
+      search = url.searchParams.get('q') || '';
+      page = parseInt(url.searchParams.get('page') || '1');
+    }
 
-    // Fetch organizations from RD Station
+    console.log(`[${requestId}] Fetching RD Station organizations - search: "${search}", page: ${page}`);
+
+    // Fetch organizations from RD Station with search filter
     let rdUrl = `${RD_API_BASE}/organizations?token=${rdToken}&limit=50&page=${page}`;
     if (search) {
       rdUrl += `&q=${encodeURIComponent(search)}`;
@@ -74,13 +97,13 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('RD Station API error:', response.status, errorText);
+      console.error(`[${requestId}] RD Station API error:`, response.status, errorText);
       throw new Error(`RD Station API error: ${response.status}`);
     }
 
     const data = await response.json();
     
-    const organizations = (data.organizations || []).map((org: any) => ({
+    const organizations = (data.organizations || []).map((org: Record<string, unknown>) => ({
       id: org._id,
       name: org.name,
       cnpj: org.legal_document || org.cnpj || null,
@@ -88,24 +111,26 @@ serve(async (req) => {
       created_at: org.created_at,
     }));
 
-    console.log(`Found ${organizations.length} organizations`);
+    console.log(`[${requestId}] Found ${organizations.length} organizations`);
 
     return new Response(JSON.stringify({
       success: true,
       organizations,
       hasMore: data.has_more || false,
-      page: parseInt(page),
+      page,
+      requestId,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Error:', errorMessage);
+    console.error(`[${requestId}] Error:`, errorMessage);
     
     return new Response(JSON.stringify({
       success: false,
       error: errorMessage,
+      requestId,
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

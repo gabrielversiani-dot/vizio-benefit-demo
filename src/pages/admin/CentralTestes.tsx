@@ -20,7 +20,9 @@ import {
   Loader2, 
   AlertCircle,
   ExternalLink,
-  RefreshCw
+  RefreshCw,
+  Sparkles,
+  RotateCcw
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -34,6 +36,24 @@ interface TestResult {
   duration?: number;
 }
 
+interface DemoSeedResult {
+  success: boolean;
+  mode: string;
+  seedId: string;
+  empresaDemoId: string;
+  empresaNome?: string;
+  summary?: {
+    contratos: number;
+    faturas: number;
+    sinistralidade_meses: number;
+    indicadores: number;
+    acoes: number;
+    materiais: number;
+  };
+  logs: string[];
+  error?: string;
+}
+
 export default function CentralTestes() {
   const { isAdminVizio, loading } = useEmpresa();
   const [testResults, setTestResults] = useState<TestResult[]>([]);
@@ -43,6 +63,12 @@ export default function CentralTestes() {
   const [seedStatus, setSeedStatus] = useState<"idle" | "success" | "error">("idle");
   const [seedMessage, setSeedMessage] = useState("");
   const [manualChecklist, setManualChecklist] = useState<Record<string, boolean>>({});
+  
+  // Demo seed state
+  const [isDemoLoading, setIsDemoLoading] = useState(false);
+  const [demoMode, setDemoMode] = useState<"create" | "cleanup" | "reset" | null>(null);
+  const [demoLogs, setDemoLogs] = useState<string[]>([]);
+  const [demoResult, setDemoResult] = useState<DemoSeedResult | null>(null);
 
   // Protect route - only admin_vizio can access
   if (loading) {
@@ -93,6 +119,51 @@ export default function CentralTestes() {
         duration,
       });
       return false;
+    }
+  };
+
+  // ========== DEMO SEED (via Edge Function) ==========
+  const handleDemoSeed = async (mode: "create" | "cleanup" | "reset") => {
+    setIsDemoLoading(true);
+    setDemoMode(mode);
+    setDemoLogs([]);
+    setDemoResult(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('seed-demo-data', {
+        body: { mode },
+      });
+
+      if (error) throw error;
+
+      setDemoResult(data);
+      setDemoLogs(data.logs || []);
+
+      if (data.success) {
+        toast.success(
+          mode === 'create' 
+            ? 'Dados demo criados com sucesso!' 
+            : mode === 'cleanup' 
+            ? 'Dados demo removidos!' 
+            : 'Dados demo resetados!'
+        );
+      } else {
+        toast.error(data.error || 'Erro ao processar demo');
+      }
+    } catch (error: any) {
+      console.error('Erro no seed demo:', error);
+      toast.error(`Erro: ${error.message}`);
+      setDemoResult({ 
+        success: false, 
+        mode, 
+        seedId: '', 
+        empresaDemoId: '', 
+        logs: [], 
+        error: error.message 
+      });
+    } finally {
+      setIsDemoLoading(false);
+      setDemoMode(null);
     }
   };
 
@@ -621,11 +692,15 @@ export default function CentralTestes() {
           </Badge>
         </div>
 
-        <Tabs defaultValue="seed" className="space-y-4">
+        <Tabs defaultValue="demo" className="space-y-4">
           <TabsList>
+            <TabsTrigger value="demo">
+              <Sparkles className="h-4 w-4 mr-2" />
+              Demo Capital Vizio
+            </TabsTrigger>
             <TabsTrigger value="seed">
               <Database className="h-4 w-4 mr-2" />
-              Dados de Teste
+              Dados de Teste (Legacy)
             </TabsTrigger>
             <TabsTrigger value="auto">
               <Play className="h-4 w-4 mr-2" />
@@ -637,7 +712,185 @@ export default function CentralTestes() {
             </TabsTrigger>
           </TabsList>
 
-          {/* SEED DATA TAB */}
+          {/* DEMO CAPITAL VIZIO TAB */}
+          <TabsContent value="demo">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-amber-500" />
+                  Demo Capital Vizio
+                </CardTitle>
+                <CardDescription>
+                  Cria dados demo completos e isolados na empresa "Capital Vizio" (is_demo=true). 
+                  Todos os registros são marcados com prefixo [DEMO] para fácil identificação e limpeza segura.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Action Buttons */}
+                <div className="flex gap-3 flex-wrap">
+                  <Button 
+                    onClick={() => handleDemoSeed('create')} 
+                    disabled={isDemoLoading}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    {isDemoLoading && demoMode === 'create' ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Database className="h-4 w-4 mr-2" />
+                    )}
+                    Criar Dados Demo
+                  </Button>
+                  
+                  <Button 
+                    onClick={() => handleDemoSeed('reset')} 
+                    disabled={isDemoLoading}
+                    variant="outline"
+                  >
+                    {isDemoLoading && demoMode === 'reset' ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                    )}
+                    Resetar Demo
+                  </Button>
+                  
+                  <Button 
+                    onClick={() => handleDemoSeed('cleanup')} 
+                    disabled={isDemoLoading}
+                    variant="destructive"
+                  >
+                    {isDemoLoading && demoMode === 'cleanup' ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4 mr-2" />
+                    )}
+                    Limpar Demo
+                  </Button>
+                </div>
+
+                {/* Result Summary */}
+                {demoResult && (
+                  <div className={`p-4 rounded-lg border ${
+                    demoResult.success 
+                      ? 'bg-green-50 border-green-200' 
+                      : 'bg-red-50 border-red-200'
+                  }`}>
+                    <div className="flex items-start gap-3">
+                      {demoResult.success ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <XCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                      )}
+                      <div className="flex-1">
+                        <p className={`font-medium ${demoResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                          {demoResult.success 
+                            ? `Operação "${demoResult.mode}" concluída com sucesso!` 
+                            : `Erro: ${demoResult.error}`}
+                        </p>
+                        {demoResult.summary && (
+                          <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2 text-sm text-green-700">
+                            <span>📄 Contratos: {demoResult.summary.contratos}</span>
+                            <span>💰 Faturas: {demoResult.summary.faturas}</span>
+                            <span>📊 Sinistralidade: {demoResult.summary.sinistralidade_meses} meses</span>
+                            <span>📈 Indicadores: {demoResult.summary.indicadores}</span>
+                            <span>🏥 Ações: {demoResult.summary.acoes}</span>
+                            <span>📎 Materiais: {demoResult.summary.materiais}</span>
+                          </div>
+                        )}
+                        {demoResult.empresaNome && (
+                          <p className="mt-2 text-sm text-green-600">
+                            Empresa: <strong>{demoResult.empresaNome}</strong> ({demoResult.empresaDemoId})
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Logs */}
+                {demoLogs.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">Logs de Execução</h4>
+                    <ScrollArea className="h-64 border rounded-lg bg-muted/30 p-3">
+                      <div className="space-y-1 font-mono text-xs">
+                        {demoLogs.map((log, i) => (
+                          <div key={i} className="text-muted-foreground whitespace-pre-wrap">
+                            {log}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* What will be created */}
+                <div className="space-y-3">
+                  <h4 className="font-medium">O que será criado:</h4>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <h5 className="font-medium text-sm flex items-center gap-2">
+                        <span>📄</span> Contratos
+                      </h5>
+                      <ul className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                        <li>• 2 contratos por produto (Saúde, Odonto, Vida)</li>
+                        <li>• Tipos: contrato principal + aditivo de reajuste</li>
+                        <li>• Documentos com paths demo (sem upload real)</li>
+                      </ul>
+                    </div>
+                    
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <h5 className="font-medium text-sm flex items-center gap-2">
+                        <span>💰</span> Faturamento
+                      </h5>
+                      <ul className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                        <li>• 12 meses por categoria (Saúde, Odonto, Vida)</li>
+                        <li>• Status variados: pagos, em atraso, aguardando</li>
+                        <li>• Valores coerentes com variação mensal</li>
+                      </ul>
+                    </div>
+                    
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <h5 className="font-medium text-sm flex items-center gap-2">
+                        <span>📊</span> Sinistralidade
+                      </h5>
+                      <ul className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                        <li>• 12 meses de dados mensais</li>
+                        <li>• 1 indicador de período consolidado</li>
+                        <li>• KPIs: média 70-88%, prêmios e sinistros</li>
+                      </ul>
+                    </div>
+                    
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <h5 className="font-medium text-sm flex items-center gap-2">
+                        <span>🏥</span> Promoção de Saúde
+                      </h5>
+                      <ul className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                        <li>• 8 ações (6 cliente + 2 internas)</li>
+                        <li>• Materiais: WhatsApp, Folders, internos</li>
+                        <li>• Campanhas: Janeiro Branco, Outubro Rosa...</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Security Notice */}
+                <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                  <div className="flex gap-3">
+                    <Shield className="h-5 w-5 text-amber-600 shrink-0" />
+                    <div className="text-sm text-amber-800">
+                      <strong>Isolamento Total:</strong> Todos os dados são vinculados exclusivamente à empresa 
+                      "Capital Vizio" (is_demo=true). Registros usam prefixo [DEMO]. A limpeza remove apenas 
+                      registros marcados com [DEMO] da empresa demo, nunca tocando em dados reais.
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* SEED DATA TAB (Legacy) */}
           <TabsContent value="seed">
             <Card>
               <CardHeader>

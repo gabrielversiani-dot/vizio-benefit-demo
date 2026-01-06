@@ -116,6 +116,60 @@ serve(async (req) => {
       log(`🆕 Empresa demo criada: ${empresaDemoId}`);
     }
 
+    // 1.5 Create demo user if needed
+    const DEMO_USER_EMAIL = 'cliente.demo@capitalvizio.com.br';
+    const DEMO_USER_PASSWORD = 'Demo@2025!';
+    
+    const { data: existingDemoUser } = await adminClient
+      .from('profiles')
+      .select('id, email')
+      .eq('email', DEMO_USER_EMAIL)
+      .single();
+
+    let demoUserId: string | null = null;
+    let demoUserCreated = false;
+
+    if (!existingDemoUser) {
+      log(`👤 Criando usuário demo: ${DEMO_USER_EMAIL}...`);
+      
+      const { data: newUser, error: userError } = await adminClient.auth.admin.createUser({
+        email: DEMO_USER_EMAIL,
+        password: DEMO_USER_PASSWORD,
+        email_confirm: true,
+        user_metadata: { nome_completo: 'Cliente Demo' }
+      });
+
+      if (userError) {
+        log(`⚠️ Erro ao criar usuário demo: ${userError.message}`);
+      } else {
+        demoUserId = newUser.user.id;
+        demoUserCreated = true;
+        log(`✅ Usuário demo criado: ${demoUserId}`);
+
+        // Update profile with empresa_id
+        await adminClient
+          .from('profiles')
+          .update({ empresa_id: empresaDemoId })
+          .eq('id', demoUserId);
+
+        // Add visualizador role (read-only client)
+        await adminClient
+          .from('user_roles')
+          .insert({ user_id: demoUserId, role: 'visualizador' });
+
+        log(`✅ Perfil vinculado à empresa demo + role visualizador`);
+      }
+    } else {
+      demoUserId = existingDemoUser.id;
+      log(`👤 Usuário demo já existe: ${DEMO_USER_EMAIL}`);
+      
+      // Ensure profile is linked to demo empresa
+      await adminClient
+        .from('profiles')
+        .update({ empresa_id: empresaDemoId })
+        .eq('id', demoUserId);
+    }
+
     // SAFETY CHECK: Verify empresa is demo before any operations
     const { data: verifyEmpresa } = await adminClient
       .from('empresas')
@@ -509,6 +563,9 @@ serve(async (req) => {
       log(`  - Sinistralidade: 12 meses + 1 indicador período`);
       log(`  - Ações: 8 (6 cliente + 2 interna)`);
       log(`  - Materiais: 10 (8 visíveis + 2 internos)`);
+      if (demoUserCreated) {
+        log(`  - 👤 Usuário demo: cliente.demo@capitalvizio.com.br / Demo@2025!`);
+      }
 
       return new Response(JSON.stringify({ 
         success: true, 
@@ -516,6 +573,12 @@ serve(async (req) => {
         seedId,
         empresaDemoId,
         empresaNome: DEMO_EMPRESA_NOME,
+        demoUser: {
+          email: 'cliente.demo@capitalvizio.com.br',
+          password: 'Demo@2025!',
+          created: demoUserCreated,
+          role: 'visualizador'
+        },
         summary: {
           contratos: 6,
           faturas: 36,

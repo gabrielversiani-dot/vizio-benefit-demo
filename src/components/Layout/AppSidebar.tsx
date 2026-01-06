@@ -51,27 +51,41 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
-        <Link to="/dashboard" className="flex items-center gap-3 group">
-          <div className="relative flex items-center justify-center rounded-lg bg-sidebar-accent/80 dark:bg-transparent p-1.5 transition-colors group-hover:bg-sidebar-accent">
+        <Link to="/dashboard" className="flex items-center gap-2 group">
+          <div className="relative flex items-center justify-center transition-colors">
+            {/* Dark mode: white text logo */}
             <img 
-              src="/branding/vizio-logo.jpeg" 
+              src="/branding/vizio-logo.png" 
               alt="Vizio Capital" 
               loading="lazy"
-              className="h-8 w-auto object-contain"
+              className="hidden dark:block h-10 w-auto object-contain"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.style.display = 'none';
-                const fallback = target.nextElementSibling as HTMLElement;
+              }}
+            />
+            {/* Light mode: dark text logo */}
+            <img 
+              src="/branding/vizio-logo-dark.png" 
+              alt="Vizio Capital" 
+              loading="lazy"
+              className="block dark:hidden h-10 w-auto object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                const fallback = document.getElementById('sidebar-logo-fallback');
                 if (fallback) fallback.style.display = 'flex';
               }}
             />
-            <div className="hidden h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary">
-              <Activity className="h-5 w-5 text-sidebar-primary-foreground" />
+            <div id="sidebar-logo-fallback" className="hidden items-center gap-3">
+              <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-sidebar-primary">
+                <Activity className="h-6 w-6 text-sidebar-primary-foreground" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-sidebar-foreground">Vizio Capital</h2>
+                <p className="text-xs text-sidebar-foreground/60">Gestão de Benefícios</p>
+              </div>
             </div>
-          </div>
-          <div className="hidden sm:block">
-            <h2 className="text-base font-semibold text-sidebar-foreground group-hover:text-sidebar-primary transition-colors">Vizio Capital</h2>
-            <p className="text-[10px] text-sidebar-foreground/60">Gestão de Benefícios</p>
           </div>
         </Link>
       </SidebarHeader>

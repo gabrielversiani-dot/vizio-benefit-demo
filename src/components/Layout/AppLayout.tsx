@@ -43,18 +43,20 @@ export function AppLayout({ children }: AppLayoutProps) {
 
                 {/* Logo in header for mobile/tablet */}
                 <Link to="/dashboard" className="lg:hidden flex items-center">
+                  {/* Dark mode: logo with dark background */}
                   <img 
-                    src="/branding/vizio-logo.png" 
+                    src="/branding/vizio-logo-dark-bg.jpeg" 
                     alt="Vizio Capital" 
                     loading="lazy"
-                    className="hidden dark:block h-8 w-auto object-contain"
+                    className="hidden dark:block h-8 w-auto object-contain rounded"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       target.style.display = 'none';
                     }}
                   />
+                  {/* Light mode: dark text logo */}
                   <img 
-                    src="/branding/vizio-logo-dark.png" 
+                    src="/branding/vizio-logo.png" 
                     alt="Vizio Capital" 
                     loading="lazy"
                     className="block dark:hidden h-8 w-auto object-contain"

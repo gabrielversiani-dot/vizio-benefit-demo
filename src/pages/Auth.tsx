@@ -89,12 +89,12 @@ export default function Auth() {
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center justify-center mb-8">
           <div className="relative flex items-center justify-center p-2">
-            {/* Dark mode: white text logo */}
+            {/* Dark mode: logo with dark background */}
             <img 
-              src="/branding/vizio-logo.png" 
+              src="/branding/vizio-logo-dark-bg.jpeg" 
               alt="Vizio Capital" 
               loading="lazy"
-              className="hidden dark:block h-16 w-auto object-contain"
+              className="hidden dark:block h-16 w-auto object-contain rounded"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.style.display = 'none';
@@ -102,7 +102,7 @@ export default function Auth() {
             />
             {/* Light mode: dark text logo */}
             <img 
-              src="/branding/vizio-logo-dark.png" 
+              src="/branding/vizio-logo.png" 
               alt="Vizio Capital" 
               loading="lazy"
               className="block dark:hidden h-16 w-auto object-contain"

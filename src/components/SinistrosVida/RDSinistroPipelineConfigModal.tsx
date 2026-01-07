@@ -218,8 +218,8 @@ export function RDSinistroPipelineConfigModal({
           empresaId,
           pipelineId: selectedPipelineId,
           stageInicialId: selectedStageInicialId,
-          stageEmAndamentoId: selectedStageEmAndamentoId || null,
-          stageConcluidoId: selectedStageConcluidoId || null,
+          stageEmAndamentoId: selectedStageEmAndamentoId === "__none__" ? null : (selectedStageEmAndamentoId || null),
+          stageConcluidoId: selectedStageConcluidoId === "__none__" ? null : (selectedStageConcluidoId || null),
         },
       });
 
@@ -413,7 +413,7 @@ export function RDSinistroPipelineConfigModal({
                           <SelectValue placeholder="Selecione..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Nenhuma</SelectItem>
+                          <SelectItem value="__none__">Nenhuma</SelectItem>
                           {filteredStages.map(s => (
                             <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                           ))}
@@ -428,7 +428,7 @@ export function RDSinistroPipelineConfigModal({
                           <SelectValue placeholder="Selecione..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Nenhuma</SelectItem>
+                          <SelectItem value="__none__">Nenhuma</SelectItem>
                           {filteredStages.map(s => (
                             <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                           ))}

@@ -28,7 +28,8 @@ import {
   User,
   Lock,
   Save,
-  Loader2
+  Loader2,
+  Palette
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -44,6 +45,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { SetupWizard } from "@/components/Setup/SetupWizard";
 import { FiliaisSection } from "@/components/Configuracoes/FiliaisSection";
+import { ThemeSelector } from "@/components/Settings/ThemeSelector";
 
 interface UserProfile {
   nome_completo: string;
@@ -329,22 +331,26 @@ export default function Configuracoes() {
           </div>
 
           <Tabs defaultValue="perfil" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="perfil" className="gap-2">
                 <User className="h-4 w-4" />
-                Perfil
+                <span className="hidden sm:inline">Perfil</span>
               </TabsTrigger>
               <TabsTrigger value="empresa" className="gap-2">
                 <Building2 className="h-4 w-4" />
-                Empresa
+                <span className="hidden sm:inline">Empresa</span>
+              </TabsTrigger>
+              <TabsTrigger value="aparencia" className="gap-2">
+                <Palette className="h-4 w-4" />
+                <span className="hidden sm:inline">Aparência</span>
               </TabsTrigger>
               <TabsTrigger value="notificacoes" className="gap-2">
                 <Bell className="h-4 w-4" />
-                Notificações
+                <span className="hidden sm:inline">Notificações</span>
               </TabsTrigger>
               <TabsTrigger value="seguranca" className="gap-2">
                 <Lock className="h-4 w-4" />
-                Segurança
+                <span className="hidden sm:inline">Segurança</span>
               </TabsTrigger>
             </TabsList>
 
@@ -479,6 +485,25 @@ export default function Configuracoes() {
                   ) : (
                     <p className="text-muted-foreground">Nenhuma empresa vinculada</p>
                   )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab: Aparência */}
+            <TabsContent value="aparencia">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Aparência</CardTitle>
+                  <CardDescription>Personalize a aparência da plataforma</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div>
+                    <Label className="text-base font-medium mb-4 block">Tema</Label>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Escolha entre o tema escuro premium ou o tema claro para uma experiência mais clean.
+                    </p>
+                    <ThemeSelector />
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

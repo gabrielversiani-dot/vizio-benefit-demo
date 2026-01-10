@@ -228,12 +228,26 @@
 }
 
 @layer components {
-  /* Premium Card */
+  /* Premium Card - Dark Theme */
   .vizio-card {
-    @apply rounded-2xl border border-border/50 bg-card p-6;
+    @apply rounded-2xl border border-border/50 bg-card p-6 transition-all duration-200;
     background: linear-gradient(145deg, hsl(var(--card)), hsl(220 15% 14%));
     box-shadow: 0 4px 24px -8px hsla(0, 0%, 0%, 0.4),
                 inset 0 1px 0 0 hsla(38, 75%, 55%, 0.1);
+  }
+
+  /* Premium Card - Light Theme com borda dourada sutil */
+  .light .vizio-card {
+    background: linear-gradient(145deg, hsl(40 35% 99%), hsl(40 25% 97%));
+    border-color: hsl(43 50% 52% / 0.15);
+    box-shadow: 0 2px 12px -3px hsla(40, 25%, 30%, 0.08),
+                inset 0 1px 0 0 hsla(43, 50%, 65%, 0.12);
+  }
+
+  .light .vizio-card:hover {
+    border-color: hsl(43 50% 52% / 0.3);
+    box-shadow: 0 4px 16px -4px hsla(43, 50%, 52%, 0.12),
+                inset 0 1px 0 0 hsla(43, 50%, 65%, 0.18);
   }
 
   .vizio-card-gold {
@@ -241,6 +255,12 @@
     border-color: hsl(var(--vizio-gold) / 0.3);
     box-shadow: 0 4px 24px -8px hsla(38, 75%, 55%, 0.15),
                 inset 0 1px 0 0 hsla(38, 75%, 55%, 0.15);
+  }
+
+  .light .vizio-card-gold {
+    border-color: hsl(43 50% 52% / 0.35);
+    box-shadow: 0 4px 18px -4px hsla(43, 50%, 52%, 0.18),
+                inset 0 1px 0 0 hsla(43, 50%, 65%, 0.2);
   }
 
   /* KPI Card */

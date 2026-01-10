@@ -236,34 +236,38 @@
   .vizio-bg-pattern::before {
     content: '';
     position: fixed;
-    bottom: -50%;
-    right: -20%;
-    width: 120%;
-    height: 150%;
+    top: 0;
+    right: 0;
+    width: 100%;
+    height: 100%;
     background: 
       conic-gradient(
-        from 200deg at 100% 100%,
+        from 180deg at 100% 100%,
         transparent 0deg,
-        transparent 5deg,
-        hsl(220 15% 16% / 0.35) 5deg,
-        hsl(220 15% 16% / 0.35) 8deg,
-        transparent 8deg,
-        transparent 14deg,
-        hsl(220 15% 16% / 0.3) 14deg,
-        hsl(220 15% 16% / 0.3) 17deg,
-        transparent 17deg,
-        transparent 24deg,
-        hsl(220 15% 16% / 0.28) 24deg,
-        hsl(220 15% 16% / 0.28) 28deg,
-        transparent 28deg,
-        transparent 36deg,
-        hsl(220 15% 16% / 0.25) 36deg,
-        hsl(220 15% 16% / 0.25) 40deg,
+        transparent 3deg,
+        hsl(220 15% 22% / 0.5) 3deg,
+        hsl(220 15% 22% / 0.5) 7deg,
+        transparent 7deg,
+        transparent 12deg,
+        hsl(220 15% 22% / 0.45) 12deg,
+        hsl(220 15% 22% / 0.45) 16deg,
+        transparent 16deg,
+        transparent 22deg,
+        hsl(220 15% 22% / 0.4) 22deg,
+        hsl(220 15% 22% / 0.4) 27deg,
+        transparent 27deg,
+        transparent 34deg,
+        hsl(220 15% 22% / 0.35) 34deg,
+        hsl(220 15% 22% / 0.35) 40deg,
         transparent 40deg,
-        transparent 50deg,
-        hsl(220 15% 16% / 0.22) 50deg,
-        hsl(220 15% 16% / 0.22) 55deg,
-        transparent 55deg
+        transparent 48deg,
+        hsl(220 15% 22% / 0.3) 48deg,
+        hsl(220 15% 22% / 0.3) 55deg,
+        transparent 55deg,
+        transparent 64deg,
+        hsl(220 15% 22% / 0.25) 64deg,
+        hsl(220 15% 22% / 0.25) 72deg,
+        transparent 72deg
       );
     pointer-events: none;
     z-index: 0;
@@ -273,28 +277,32 @@
   .vizio-bg-pattern:is(.light *)::before {
     background: 
       conic-gradient(
-        from 200deg at 100% 100%,
+        from 180deg at 100% 100%,
         transparent 0deg,
-        transparent 5deg,
-        hsl(100 5% 78% / 0.45) 5deg,
-        hsl(100 5% 78% / 0.45) 8deg,
-        transparent 8deg,
-        transparent 14deg,
-        hsl(100 5% 78% / 0.4) 14deg,
-        hsl(100 5% 78% / 0.4) 17deg,
-        transparent 17deg,
-        transparent 24deg,
-        hsl(100 5% 78% / 0.38) 24deg,
-        hsl(100 5% 78% / 0.38) 28deg,
-        transparent 28deg,
-        transparent 36deg,
-        hsl(100 5% 78% / 0.35) 36deg,
-        hsl(100 5% 78% / 0.35) 40deg,
+        transparent 3deg,
+        hsl(100 5% 75% / 0.6) 3deg,
+        hsl(100 5% 75% / 0.6) 7deg,
+        transparent 7deg,
+        transparent 12deg,
+        hsl(100 5% 75% / 0.55) 12deg,
+        hsl(100 5% 75% / 0.55) 16deg,
+        transparent 16deg,
+        transparent 22deg,
+        hsl(100 5% 75% / 0.5) 22deg,
+        hsl(100 5% 75% / 0.5) 27deg,
+        transparent 27deg,
+        transparent 34deg,
+        hsl(100 5% 75% / 0.45) 34deg,
+        hsl(100 5% 75% / 0.45) 40deg,
         transparent 40deg,
-        transparent 50deg,
-        hsl(100 5% 78% / 0.32) 50deg,
-        hsl(100 5% 78% / 0.32) 55deg,
-        transparent 55deg
+        transparent 48deg,
+        hsl(100 5% 75% / 0.4) 48deg,
+        hsl(100 5% 75% / 0.4) 55deg,
+        transparent 55deg,
+        transparent 64deg,
+        hsl(100 5% 75% / 0.35) 64deg,
+        hsl(100 5% 75% / 0.35) 72deg,
+        transparent 72deg
       );
   }
 

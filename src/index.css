@@ -114,75 +114,96 @@
     /* Same as root - dark is default */
   }
 
-  /* Light Theme (Clean Mode) */
+  /* Light Theme - Vizio Clean Sofisticado (baseado na apresentação institucional) */
   .light {
-    --background: 0 0% 98%;
-    --foreground: 222 47% 11%;
+    /* Base - Bege/cinza quente elegante */
+    --background: 40 20% 96%; /* #F5F3EF - Bege sofisticado */
+    --foreground: 220 18% 20%; /* Grafite escuro Vizio */
     
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    /* Cards - Off-white quente com elegância */
+    --card: 40 30% 98%; /* #FAF9F7 */
+    --card-foreground: 220 18% 20%;
     
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    /* Popover */
+    --popover: 40 35% 99%;
+    --popover-foreground: 220 18% 20%;
     
-    --primary: 43 74% 45%;
-    --primary-foreground: 0 0% 100%;
+    /* Primary - Dourado Vizio */
+    --primary: 43 50% 52%; /* #C4A962 ajustado */
+    --primary-foreground: 220 18% 12%;
     
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 11%;
+    /* Secondary - Cinza quente */
+    --secondary: 40 18% 93%;
+    --secondary-foreground: 220 18% 25%;
     
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    /* Muted - Cinza/bege sutil */
+    --muted: 40 20% 94%;
+    --muted-foreground: 220 12% 45%;
     
-    --accent: 43 74% 95%;
-    --accent-foreground: 43 74% 35%;
+    /* Accent - Dourado sutil */
+    --accent: 43 40% 93%;
+    --accent-foreground: 43 50% 38%;
     
-    --success: 142 76% 36%;
+    /* Success */
+    --success: 150 55% 42%;
     --success-foreground: 0 0% 100%;
     
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
+    /* Warning */
+    --warning: 40 90% 50%;
+    --warning-foreground: 220 18% 12%;
     
-    --destructive: 0 84% 60%;
+    /* Destructive */
+    --destructive: 0 65% 52%;
     --destructive-foreground: 0 0% 100%;
     
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 43 74% 45%;
+    /* Borders - Bege sutil elegante */
+    --border: 40 18% 86%; /* #E8E4DC */
+    --input: 40 20% 90%;
+    --ring: 43 50% 52%;
     
     /* Vizio Light tokens */
-    --vizio-gold: 43 74% 45%;
-    --vizio-gold-light: 43 74% 60%;
-    --vizio-graphite: 222 47% 20%;
-    --vizio-graphite-light: 220 14% 50%;
-    --vizio-cream: 60 30% 96%;
+    --vizio-gold: 43 50% 52%;
+    --vizio-gold-light: 43 45% 68%;
+    --vizio-gold-dark: 43 55% 40%;
+    --vizio-graphite: 220 18% 22%;
+    --vizio-graphite-light: 220 12% 45%;
+    --vizio-cream: 40 35% 98%;
+    --vizio-cream-dark: 40 25% 94%;
+    --vizio-warm-gray: 40 18% 88%;
     
-    /* Sidebar Light */
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 222 47% 11%;
-    --sidebar-primary: 43 74% 45%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 43 74% 95%;
-    --sidebar-accent-foreground: 43 74% 35%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 43 74% 45%;
+    /* Sidebar Light - Bege sofisticado */
+    --sidebar-background: 40 28% 97%; /* #F8F6F2 */
+    --sidebar-foreground: 220 18% 25%;
+    --sidebar-primary: 43 50% 52%;
+    --sidebar-primary-foreground: 220 18% 12%;
+    --sidebar-accent: 43 38% 94%;
+    --sidebar-accent-foreground: 43 50% 35%;
+    --sidebar-border: 40 20% 88%;
+    --sidebar-ring: 43 50% 52%;
     
-    /* Gradients Light */
-    --gradient-gold: linear-gradient(135deg, hsl(43, 74%, 55%) 0%, hsl(38, 92%, 55%) 100%);
-    --gradient-dark: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(220, 14%, 98%) 100%);
-    --gradient-card: linear-gradient(145deg, hsl(0, 0%, 100%) 0%, hsl(220, 14%, 98%) 100%);
+    /* Sidebar item states */
+    --sidebar-item-hover: 40 25% 93%;
+    --sidebar-item-active: 43 35% 91%;
+    --sidebar-divider: 40 18% 86%;
     
-    /* Shadows Light */
-    --shadow-gold: 0 4px 20px -4px hsla(43, 74%, 45%, 0.25);
-    --shadow-card: 0 2px 8px -2px hsla(222, 47%, 11%, 0.08);
-    --shadow-elevated: 0 8px 30px -8px hsla(222, 47%, 11%, 0.12);
+    /* Gradients Light - Quentes e sutis */
+    --gradient-gold: linear-gradient(135deg, hsl(43 50% 55%) 0%, hsl(40 55% 48%) 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(40 30% 99%) 0%, hsl(40 22% 96%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(40 35% 99%) 0%, hsl(40 25% 96%) 100%);
+    --gradient-surface: linear-gradient(135deg, hsl(40 28% 97%) 0%, hsl(40 20% 95%) 100%);
     
-    /* Chart colors light */
-    --chart-1: 43 74% 45%;
-    --chart-2: 187 85% 43%;
-    --chart-3: 270 70% 55%;
-    --chart-4: 142 76% 36%;
-    --chart-5: 0 84% 60%;
+    /* Shadows Light - Quentes e elegantes */
+    --shadow-gold: 0 4px 20px -4px hsla(43, 50%, 52%, 0.22);
+    --shadow-card: 0 2px 12px -3px hsla(40, 25%, 30%, 0.08);
+    --shadow-elevated: 0 8px 28px -6px hsla(40, 25%, 30%, 0.12);
+    --shadow-soft: 0 1px 4px -1px hsla(40, 20%, 30%, 0.06);
+    
+    /* Chart colors - Warm premium palette */
+    --chart-1: 43 50% 52%;
+    --chart-2: 38 55% 48%;
+    --chart-3: 150 55% 42%;
+    --chart-4: 220 18% 45%;
+    --chart-5: 0 60% 55%;
   }
 }
 

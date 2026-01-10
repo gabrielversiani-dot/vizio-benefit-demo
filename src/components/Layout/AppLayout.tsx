@@ -20,6 +20,7 @@ import { LogOut, Building2, Search, Bell, ChevronDown, Menu } from "lucide-react
 import { useAuth } from "@/hooks/useAuth";
 import { useEmpresa } from "@/contexts/EmpresaContext";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@/components/Settings/ThemeToggle";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -128,6 +129,9 @@ export function AppLayout({ children, title, subtitle }: AppLayoutProps) {
                 className="vizio-input w-64 xl:w-80 pl-11 py-2"
               />
             </div>
+
+            {/* Theme toggle */}
+            <ThemeToggle />
 
             {/* Notifications */}
             <Button

@@ -85,7 +85,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 vizio-bg-pattern">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center justify-center mb-8">
           <BrandLogo size="auth" />

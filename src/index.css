@@ -228,6 +228,40 @@
 }
 
 @layer components {
+  /* Vizio Background Pattern - Faixas diagonais decorativas */
+  .vizio-bg-pattern {
+    position: relative;
+  }
+
+  .vizio-bg-pattern::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 55%;
+    height: 100%;
+    background: repeating-linear-gradient(
+      -55deg,
+      transparent,
+      transparent 40px,
+      hsl(220 15% 18% / 0.25) 40px,
+      hsl(220 15% 18% / 0.25) 80px
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .light .vizio-bg-pattern::before,
+  .vizio-bg-pattern:is(.light *)::before {
+    background: repeating-linear-gradient(
+      -55deg,
+      transparent,
+      transparent 40px,
+      hsl(100 5% 82% / 0.45) 40px,
+      hsl(100 5% 82% / 0.45) 80px
+    );
+  }
+
   /* Premium Card - Dark Theme */
   .vizio-card {
     @apply rounded-2xl border border-border/50 bg-card p-6 transition-all duration-200;

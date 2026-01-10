@@ -45,7 +45,7 @@ export function AppLayout({ children, title, subtitle }: AppLayoutProps) {
   const userInitial = userName.charAt(0).toUpperCase();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background vizio-bg-pattern">
       {/* Sidebar */}
       <AppSidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
 

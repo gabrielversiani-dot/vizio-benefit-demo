@@ -114,34 +114,34 @@
     /* Same as root - dark is default */
   }
 
-  /* Light Theme - Vizio Clean Sofisticado (baseado na apresentação institucional) */
+  /* Light Theme - Vizio Clean Sofisticado (paleta cinza elegante) */
   .light {
-    /* Base - Bege/cinza quente elegante */
-    --background: 40 20% 96%; /* #F5F3EF - Bege sofisticado */
-    --foreground: 220 18% 20%; /* Grafite escuro Vizio */
+    /* Base - Cinza neutro elegante mais escuro */
+    --background: 100 5% 92%; /* #EAEBE8 - Cinza sofisticado */
+    --foreground: 220 12% 20%; /* #2E3338 - Grafite escuro */
     
-    /* Cards - Off-white quente com elegância */
-    --card: 40 30% 98%; /* #FAF9F7 */
-    --card-foreground: 220 18% 20%;
+    /* Cards - Cinza claro refinado */
+    --card: 100 8% 95%; /* #F2F3F0 */
+    --card-foreground: 220 12% 20%;
     
     /* Popover */
-    --popover: 40 35% 99%;
-    --popover-foreground: 220 18% 20%;
+    --popover: 100 8% 97%;
+    --popover-foreground: 220 12% 20%;
     
     /* Primary - Dourado Vizio */
-    --primary: 43 50% 52%; /* #C4A962 ajustado */
+    --primary: 43 50% 52%; /* #C4A962 */
     --primary-foreground: 220 18% 12%;
     
-    /* Secondary - Cinza quente */
-    --secondary: 40 18% 93%;
-    --secondary-foreground: 220 18% 25%;
+    /* Secondary - Cinza neutro */
+    --secondary: 100 5% 90%;
+    --secondary-foreground: 220 12% 25%;
     
-    /* Muted - Cinza/bege sutil */
-    --muted: 40 20% 94%;
-    --muted-foreground: 220 12% 45%;
+    /* Muted - Cinza sutil */
+    --muted: 100 5% 88%; /* #E0E1DE */
+    --muted-foreground: 220 8% 42%; /* #656B73 */
     
     /* Accent - Dourado sutil */
-    --accent: 43 40% 93%;
+    --accent: 43 35% 92%;
     --accent-foreground: 43 50% 38%;
     
     /* Success */
@@ -156,53 +156,53 @@
     --destructive: 0 65% 52%;
     --destructive-foreground: 0 0% 100%;
     
-    /* Borders - Bege sutil elegante */
-    --border: 40 18% 86%; /* #E8E4DC */
-    --input: 40 20% 90%;
+    /* Borders - Cinza elegante */
+    --border: 100 5% 85%; /* #D8D9D6 */
+    --input: 100 5% 90%;
     --ring: 43 50% 52%;
     
-    /* Vizio Light tokens */
+    /* Vizio Light tokens - tons cinza */
     --vizio-gold: 43 50% 52%;
     --vizio-gold-light: 43 45% 68%;
     --vizio-gold-dark: 43 55% 40%;
-    --vizio-graphite: 220 18% 22%;
-    --vizio-graphite-light: 220 12% 45%;
-    --vizio-cream: 40 35% 98%;
-    --vizio-cream-dark: 40 25% 94%;
-    --vizio-warm-gray: 40 18% 88%;
+    --vizio-graphite: 220 12% 22%;
+    --vizio-graphite-light: 220 8% 45%;
+    --vizio-light-cream: 100 6% 94%; /* #F0F1EE */
+    --vizio-light-beige: 100 5% 90%; /* #E5E6E3 */
+    --vizio-warm-gray: 100 5% 86%; /* #DCDDD9 */
     
-    /* Sidebar Light - Bege sofisticado */
-    --sidebar-background: 40 28% 97%; /* #F8F6F2 */
-    --sidebar-foreground: 220 18% 25%;
+    /* Sidebar Light - Cinza sofisticado */
+    --sidebar-background: 100 6% 93%; /* #EDEEEB */
+    --sidebar-foreground: 220 12% 25%;
     --sidebar-primary: 43 50% 52%;
     --sidebar-primary-foreground: 220 18% 12%;
-    --sidebar-accent: 43 38% 94%;
+    --sidebar-accent: 43 32% 93%;
     --sidebar-accent-foreground: 43 50% 35%;
-    --sidebar-border: 40 20% 88%;
+    --sidebar-border: 100 5% 87%; /* #DDDEDA */
     --sidebar-ring: 43 50% 52%;
     
     /* Sidebar item states */
-    --sidebar-item-hover: 40 25% 93%;
-    --sidebar-item-active: 43 35% 91%;
-    --sidebar-divider: 40 18% 86%;
+    --sidebar-item-hover: 100 5% 89%;
+    --sidebar-item-active: 43 30% 90%;
+    --sidebar-divider: 100 5% 85%;
     
-    /* Gradients Light - Quentes e sutis */
+    /* Gradients Light - Cinza neutro com sutileza */
     --gradient-gold: linear-gradient(135deg, hsl(43 50% 55%) 0%, hsl(40 55% 48%) 100%);
-    --gradient-dark: linear-gradient(180deg, hsl(40 30% 99%) 0%, hsl(40 22% 96%) 100%);
-    --gradient-card: linear-gradient(145deg, hsl(40 35% 99%) 0%, hsl(40 25% 96%) 100%);
-    --gradient-surface: linear-gradient(135deg, hsl(40 28% 97%) 0%, hsl(40 20% 95%) 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(100 6% 96%) 0%, hsl(100 5% 92%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(100 8% 96%) 0%, hsl(100 6% 93%) 100%);
+    --gradient-surface: linear-gradient(135deg, hsl(100 6% 94%) 0%, hsl(100 5% 91%) 100%);
     
-    /* Shadows Light - Quentes e elegantes */
+    /* Shadows Light - Neutras e elegantes */
     --shadow-gold: 0 4px 20px -4px hsla(43, 50%, 52%, 0.22);
-    --shadow-card: 0 2px 12px -3px hsla(40, 25%, 30%, 0.08);
-    --shadow-elevated: 0 8px 28px -6px hsla(40, 25%, 30%, 0.12);
-    --shadow-soft: 0 1px 4px -1px hsla(40, 20%, 30%, 0.06);
+    --shadow-card: 0 2px 12px -3px hsla(220, 10%, 30%, 0.08);
+    --shadow-elevated: 0 8px 28px -6px hsla(220, 10%, 30%, 0.12);
+    --shadow-soft: 0 1px 4px -1px hsla(220, 10%, 30%, 0.06);
     
-    /* Chart colors - Warm premium palette */
+    /* Chart colors - Neutral premium palette */
     --chart-1: 43 50% 52%;
     --chart-2: 38 55% 48%;
     --chart-3: 150 55% 42%;
-    --chart-4: 220 18% 45%;
+    --chart-4: 220 12% 45%;
     --chart-5: 0 60% 55%;
   }
 }
@@ -236,18 +236,18 @@
                 inset 0 1px 0 0 hsla(38, 75%, 55%, 0.1);
   }
 
-  /* Premium Card - Light Theme com borda dourada sutil */
+  /* Premium Card - Light Theme com borda dourada sutil (cinza elegante) */
   .light .vizio-card {
-    background: linear-gradient(145deg, hsl(40 35% 99%), hsl(40 25% 97%));
-    border-color: hsl(43 50% 52% / 0.15);
-    box-shadow: 0 2px 12px -3px hsla(40, 25%, 30%, 0.08),
+    background: linear-gradient(145deg, hsl(100 8% 96%), hsl(100 6% 93%));
+    border-color: hsl(43 50% 52% / 0.18);
+    box-shadow: 0 2px 12px -3px hsla(220, 10%, 30%, 0.08),
                 inset 0 1px 0 0 hsla(43, 50%, 65%, 0.12);
   }
 
   .light .vizio-card:hover {
-    border-color: hsl(43 50% 52% / 0.3);
-    box-shadow: 0 4px 16px -4px hsla(43, 50%, 52%, 0.12),
-                inset 0 1px 0 0 hsla(43, 50%, 65%, 0.18);
+    border-color: hsl(43 50% 52% / 0.35);
+    box-shadow: 0 4px 16px -4px hsla(43, 50%, 52%, 0.14),
+                inset 0 1px 0 0 hsla(43, 50%, 65%, 0.2);
   }
 
   .vizio-card-gold {

@@ -228,7 +228,7 @@
 }
 
 @layer components {
-  /* Vizio Background Pattern - Faixas diagonais decorativas */
+  /* Vizio Background Pattern - Raios radiantes (sunburst effect) */
   .vizio-bg-pattern {
     position: relative;
   }
@@ -236,30 +236,66 @@
   .vizio-bg-pattern::before {
     content: '';
     position: fixed;
-    top: 0;
-    right: 0;
-    width: 55%;
-    height: 100%;
-    background: repeating-linear-gradient(
-      -55deg,
-      transparent,
-      transparent 40px,
-      hsl(220 15% 18% / 0.25) 40px,
-      hsl(220 15% 18% / 0.25) 80px
-    );
+    bottom: -50%;
+    right: -20%;
+    width: 120%;
+    height: 150%;
+    background: 
+      conic-gradient(
+        from 200deg at 100% 100%,
+        transparent 0deg,
+        transparent 5deg,
+        hsl(220 15% 16% / 0.35) 5deg,
+        hsl(220 15% 16% / 0.35) 8deg,
+        transparent 8deg,
+        transparent 14deg,
+        hsl(220 15% 16% / 0.3) 14deg,
+        hsl(220 15% 16% / 0.3) 17deg,
+        transparent 17deg,
+        transparent 24deg,
+        hsl(220 15% 16% / 0.28) 24deg,
+        hsl(220 15% 16% / 0.28) 28deg,
+        transparent 28deg,
+        transparent 36deg,
+        hsl(220 15% 16% / 0.25) 36deg,
+        hsl(220 15% 16% / 0.25) 40deg,
+        transparent 40deg,
+        transparent 50deg,
+        hsl(220 15% 16% / 0.22) 50deg,
+        hsl(220 15% 16% / 0.22) 55deg,
+        transparent 55deg
+      );
     pointer-events: none;
     z-index: 0;
   }
 
   .light .vizio-bg-pattern::before,
   .vizio-bg-pattern:is(.light *)::before {
-    background: repeating-linear-gradient(
-      -55deg,
-      transparent,
-      transparent 40px,
-      hsl(100 5% 82% / 0.45) 40px,
-      hsl(100 5% 82% / 0.45) 80px
-    );
+    background: 
+      conic-gradient(
+        from 200deg at 100% 100%,
+        transparent 0deg,
+        transparent 5deg,
+        hsl(100 5% 78% / 0.45) 5deg,
+        hsl(100 5% 78% / 0.45) 8deg,
+        transparent 8deg,
+        transparent 14deg,
+        hsl(100 5% 78% / 0.4) 14deg,
+        hsl(100 5% 78% / 0.4) 17deg,
+        transparent 17deg,
+        transparent 24deg,
+        hsl(100 5% 78% / 0.38) 24deg,
+        hsl(100 5% 78% / 0.38) 28deg,
+        transparent 28deg,
+        transparent 36deg,
+        hsl(100 5% 78% / 0.35) 36deg,
+        hsl(100 5% 78% / 0.35) 40deg,
+        transparent 40deg,
+        transparent 50deg,
+        hsl(100 5% 78% / 0.32) 50deg,
+        hsl(100 5% 78% / 0.32) 55deg,
+        transparent 55deg
+      );
   }
 
   /* Premium Card - Dark Theme */

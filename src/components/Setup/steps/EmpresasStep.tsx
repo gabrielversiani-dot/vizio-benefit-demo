@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Loader2, Save, AlertTriangle, Info, Eye, FileCheck, Sparkles, Trash2, RefreshCw, Database } from "lucide-react";
+import { CheckCircle2, Loader2, Save, Info, Eye, FileCheck, Sparkles, Trash2, Database } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { EditableGrid, GridColumn, GridRow } from "../EditableGrid";
@@ -150,10 +150,9 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
   const [activeUndo, setActiveUndo] = useState<{ id: string; count: number; expiresAt: string } | null>(null);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [dbEmpresasCount, setDbEmpresasCount] = useState<number>(0);
-  const [showConflictBanner, setShowConflictBanner] = useState(false);
   const hasRestoredRef = useRef(false);
   
-  const { saveDraft, getStepDraft, clearStepDraft, isLoaded, wasRestoreShown, markRestoreShown, hasStepDraft } = useSetupDraft();
+  const { saveDraft, getStepDraft, clearStepDraft, isLoaded } = useSetupDraft();
   const { createSnapshot, getSnapshot, removeSnapshot } = useSetupUndo();
   const { refetchEmpresas } = useEmpresa();
 
@@ -174,13 +173,13 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
     };
   };
 
-  // Load empresas from database
+  // Load empresas from database (only real companies, not demo)
   const loadFromDatabase = async (): Promise<GridRow[]> => {
     const { data, error } = await supabase
       .from('empresas')
       .select('id, nome, cnpj, razao_social, contato_email, contato_telefone, is_demo')
       .eq('ativo', true)
-      .order('is_demo')
+      .eq('is_demo', false) // Only real companies
       .order('nome');
     
     if (error) {
@@ -240,7 +239,7 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
     });
   };
 
-  // Load draft or database on mount
+  // Load from database on mount - always prioritize DB as source of truth
   useEffect(() => {
     if (!isLoaded || hasRestoredRef.current) return;
     hasRestoredRef.current = true;
@@ -249,37 +248,44 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
       setIsLoadingFromDB(true);
       
       try {
-        // Load from database first to know what exists
+        // Load real companies from database
         const dbRows = await loadFromDatabase();
         setDbEmpresasCount(dbRows.length);
         
         const draftData = getStepDraft('empresas');
-        const hasDraft = draftData.length > 0;
         
-        if (!hasDraft) {
-          // No draft - load from database automatically
-          if (dbRows.length > 0) {
+        // Create set of existing CNPJs from DB for comparison
+        const dbCnpjs = new Set(dbRows.map(r => normalizeCNPJ(r.data.cnpj || '')));
+        
+        // Find new rows from draft that don't exist in DB (by CNPJ)
+        const newFromDraft = draftData.filter(r => {
+          const cnpj = normalizeCNPJ(r.data?.cnpj || '');
+          return cnpj && cnpj.length === 14 && !dbCnpjs.has(cnpj);
+        });
+        
+        if (dbRows.length > 0) {
+          // DB has companies - use them as base
+          if (newFromDraft.length > 0) {
+            // Merge: DB companies + new valid entries from draft
+            setRows([...dbRows, ...newFromDraft]);
+            toast.info(`${dbRows.length} empresa(s) do sistema + ${newFromDraft.length} nova(s) do rascunho`);
+          } else {
+            // Only DB data
             setRows(dbRows);
-            toast.success('Empresas carregadas do sistema', {
-              description: `${dbRows.length} empresa(s) encontrada(s)`,
-            });
+            toast.success(`${dbRows.length} empresa(s) carregada(s) do sistema`);
           }
-        } else {
-          // Draft exists - show conflict banner if DB has data
+          // Clear obsolete draft
+          clearStepDraft('empresas');
+        } else if (draftData.length > 0) {
+          // No DB data, use draft
           setRows(draftData);
-          
-          if (dbRows.length > 0 && !wasRestoreShown('empresas')) {
-            setShowConflictBanner(true);
-            markRestoreShown('empresas');
-          } else if (!wasRestoreShown('empresas')) {
-            markRestoreShown('empresas');
-            toast.info('Rascunho restaurado', { 
-              description: `${draftData.length} empresa(s)`,
-            });
-          }
+          toast.info('Rascunho restaurado', { 
+            description: `${draftData.length} empresa(s)`,
+          });
         }
       } catch (error) {
         console.error('Error initializing empresas data:', error);
+        toast.error('Erro ao carregar empresas');
       } finally {
         setIsLoadingFromDB(false);
       }
@@ -288,15 +294,15 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
     initializeData();
   }, [isLoaded]);
 
-  // Handle replacing draft with database data
-  const handleReplaceWithDB = async () => {
+  // Manual refresh from database
+  const handleRefreshFromDB = async () => {
     setIsLoadingFromDB(true);
     try {
       const dbRows = await loadFromDatabase();
       setRows(dbRows);
+      setDbEmpresasCount(dbRows.length);
       clearStepDraft('empresas');
-      setShowConflictBanner(false);
-      toast.success('Dados substituídos pelo sistema', {
+      toast.success('Dados atualizados do sistema', {
         description: `${dbRows.length} empresa(s) carregada(s)`,
       });
     } catch (error) {
@@ -304,58 +310,6 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
     } finally {
       setIsLoadingFromDB(false);
     }
-  };
-
-  // Handle merging draft with database data (by CNPJ)
-  const handleMergeWithDB = async () => {
-    setIsLoadingFromDB(true);
-    try {
-      const dbRows = await loadFromDatabase();
-      
-      // Get CNPJs from current rows (draft)
-      const existingCnpjs = new Set(
-        rows.map(r => normalizeCNPJ(r.data.cnpj || ''))
-      );
-      
-      // Add DB rows that don't exist in draft
-      const newFromDB = dbRows.filter(
-        dbRow => !existingCnpjs.has(normalizeCNPJ(dbRow.data.cnpj || ''))
-      );
-      
-      if (newFromDB.length > 0) {
-        const mergedRows = [...rows, ...newFromDB];
-        setRows(mergedRows);
-        saveDraft('empresas', mergedRows);
-        toast.success('Dados mesclados', {
-          description: `${newFromDB.length} empresa(s) adicionada(s) do sistema`,
-        });
-      } else {
-        toast.info('Nenhuma empresa nova para adicionar');
-      }
-      setShowConflictBanner(false);
-    } catch (error) {
-      toast.error('Erro ao mesclar dados');
-    } finally {
-      setIsLoadingFromDB(false);
-    }
-  };
-
-  // Handle keeping draft only
-  const handleKeepDraft = () => {
-    setShowConflictBanner(false);
-    toast.info('Mantendo rascunho local');
-  };
-
-  // Manual refresh from database
-  const handleRefreshFromDB = async () => {
-    if (rows.length > 0) {
-      // Ask for confirmation if there are rows
-      const confirmed = window.confirm(
-        'Isso substituirá os dados atuais pelo conteúdo do banco de dados. Continuar?'
-      );
-      if (!confirmed) return;
-    }
-    await handleReplaceWithDB();
   };
 
   // Handle clearing draft
@@ -625,49 +579,6 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
           <Loader2 className="h-4 w-4 animate-spin" />
           <span className="text-sm">Carregando empresas do sistema...</span>
         </div>
-      )}
-
-      {/* Conflict banner - draft vs database */}
-      {showConflictBanner && dbEmpresasCount > 0 && (
-        <Alert variant="default" className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="flex flex-col gap-3">
-            <span>
-              Você está vendo um <strong>rascunho local</strong> com {rows.length} empresa(s). 
-              Existem <strong>{dbEmpresasCount}</strong> empresa(s) cadastradas no sistema.
-            </span>
-            <div className="flex flex-wrap gap-2">
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={handleReplaceWithDB}
-                disabled={isLoadingFromDB}
-                className="gap-1"
-              >
-                <Database className="h-3 w-3" />
-                Substituir pelo Sistema
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={handleMergeWithDB}
-                disabled={isLoadingFromDB}
-                className="gap-1"
-              >
-                <RefreshCw className="h-3 w-3" />
-                Mesclar
-              </Button>
-              <Button 
-                size="sm" 
-                variant="ghost" 
-                onClick={handleKeepDraft}
-                className="gap-1"
-              >
-                Manter rascunho
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
       )}
 
       <Alert>

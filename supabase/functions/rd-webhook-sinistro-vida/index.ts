@@ -2,10 +2,11 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
+import { encode as encodeHex } from "https://deno.land/std@0.177.0/encoding/hex.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-rd-signature',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-rd-signature, x-webhook-token',
 };
 
 // Stage to status mapping (reverse of sync function)
@@ -52,6 +53,69 @@ interface RDWebhookPayload {
   };
 }
 
+// Verify HMAC signature from RD Station or shared token
+async function verifyWebhookAuth(req: Request, rawBody: string): Promise<{ valid: boolean; method: string }> {
+  const webhookSecret = Deno.env.get('RD_STATION_WEBHOOK_SECRET');
+  
+  // If no secret configured, reject all requests for security
+  if (!webhookSecret) {
+    console.warn('[Security] RD_STATION_WEBHOOK_SECRET not configured - rejecting request');
+    return { valid: false, method: 'none' };
+  }
+
+  // Method 1: Check x-rd-signature header (HMAC-SHA256)
+  const rdSignature = req.headers.get('x-rd-signature');
+  if (rdSignature) {
+    try {
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+      const keyData = encoder.encode(webhookSecret);
+      const messageData = encoder.encode(rawBody);
+      
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+      );
+      
+      const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+      const hexBytes = encodeHex(new Uint8Array(signature));
+      const expectedSignature = decoder.decode(hexBytes);
+      
+      // Compare signatures (timing-safe comparison)
+      if (expectedSignature.toLowerCase() === rdSignature.toLowerCase()) {
+        return { valid: true, method: 'hmac' };
+      }
+      
+      // Also try with "sha256=" prefix format
+      if (`sha256=${expectedSignature}`.toLowerCase() === rdSignature.toLowerCase()) {
+        return { valid: true, method: 'hmac' };
+      }
+      
+      console.warn('[Security] HMAC signature mismatch');
+    } catch (e) {
+      console.error('[Security] HMAC verification error:', e);
+    }
+  }
+
+  // Method 2: Check x-webhook-token header (simple shared token)
+  const webhookToken = req.headers.get('x-webhook-token');
+  if (webhookToken && webhookToken === webhookSecret) {
+    return { valid: true, method: 'token' };
+  }
+
+  // Method 3: Check URL query parameter (for webhook configuration)
+  const url = new URL(req.url);
+  const queryToken = url.searchParams.get('token');
+  if (queryToken && queryToken === webhookSecret) {
+    return { valid: true, method: 'query' };
+  }
+
+  return { valid: false, method: 'failed' };
+}
+
 // Generate deterministic hash for timeline idempotency
 async function generateEventHash(parts: string[]): Promise<string> {
   const encoder = new TextEncoder();
@@ -84,6 +148,24 @@ serve(async (req) => {
   }
 
   try {
+    // Read raw body for signature verification
+    const rawBody = await req.text();
+    
+    // Verify webhook authentication
+    const authResult = await verifyWebhookAuth(req, rawBody);
+    if (!authResult.valid) {
+      console.error(`[${requestId}] Webhook authentication failed`);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Unauthorized - invalid or missing webhook signature' 
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    console.log(`[${requestId}] Webhook authenticated via ${authResult.method}`);
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
@@ -91,7 +173,7 @@ serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    const payload: RDWebhookPayload = await req.json();
+    const payload: RDWebhookPayload = JSON.parse(rawBody);
     console.log(`[${requestId}] Received webhook:`, JSON.stringify({ 
       event_uuid: payload.event_uuid,
       event_type: payload.event_type,

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -19,6 +19,7 @@ interface EmpresaContextType {
   isAdminVizio: boolean;
   userEmpresaId: string | null;
   userRole: AppRole | null;
+  refetchEmpresas: () => Promise<void>;
 }
 
 const EmpresaContext = createContext<EmpresaContextType | undefined>(undefined);
@@ -31,6 +32,24 @@ export function EmpresaProvider({ children }: { children: ReactNode }) {
   const [isAdminVizio, setIsAdminVizio] = useState(false);
   const [userEmpresaId, setUserEmpresaId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<AppRole | null>(null);
+
+  // Fetch empresas from database
+  const fetchEmpresas = useCallback(async () => {
+    const { data: empresasData } = await supabase
+      .from('empresas')
+      .select('id, nome, cnpj, is_demo')
+      .eq('ativo', true)
+      .order('is_demo')
+      .order('nome');
+    
+    return empresasData || [];
+  }, []);
+
+  // Public function to refetch empresas (e.g., after creating new ones in Setup)
+  const refetchEmpresas = useCallback(async () => {
+    const empresasData = await fetchEmpresas();
+    setEmpresas(empresasData);
+  }, [fetchEmpresas]);
 
   useEffect(() => {
     if (!user) {
@@ -70,19 +89,13 @@ export function EmpresaProvider({ children }: { children: ReactNode }) {
           setEmpresaSelecionada(empresaId);
         }
 
-        // Buscar lista de empresas (para Admin Vizio ou para pegar nome da empresa)
-        const { data: empresasData } = await supabase
-          .from('empresas')
-          .select('id, nome, cnpj, is_demo')
-          .eq('ativo', true)
-          .order('is_demo')
-          .order('nome');
-
-        setEmpresas(empresasData || []);
+        // Buscar lista de empresas
+        const empresasData = await fetchEmpresas();
+        setEmpresas(empresasData);
 
         // Se for Admin Vizio e ainda não tiver empresa selecionada, selecionar a primeira
-        if (isVizioAdmin && !empresaSelecionada && empresasData && empresasData.length > 0) {
-          setEmpresaSelecionada(empresasData[0].id);
+        if (isVizioAdmin && empresasData && empresasData.length > 0) {
+          setEmpresaSelecionada(prev => prev || empresasData[0].id);
         }
 
       } catch (error) {
@@ -93,7 +106,7 @@ export function EmpresaProvider({ children }: { children: ReactNode }) {
     }
 
     loadUserData();
-  }, [user]);
+  }, [user, fetchEmpresas]);
 
   return (
     <EmpresaContext.Provider
@@ -105,6 +118,7 @@ export function EmpresaProvider({ children }: { children: ReactNode }) {
         isAdminVizio,
         userEmpresaId,
         userRole,
+        refetchEmpresas,
       }}
     >
       {children}

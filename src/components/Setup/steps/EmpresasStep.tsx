@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Loader2, Save, AlertTriangle, Info, Eye, FileCheck, Sparkles, Trash2 } from "lucide-react";
+import { CheckCircle2, Loader2, Save, AlertTriangle, Info, Eye, FileCheck, Sparkles, Trash2, RefreshCw, Database } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { EditableGrid, GridColumn, GridRow } from "../EditableGrid";
@@ -11,6 +11,7 @@ import { UndoBanner } from "../UndoBanner";
 import { AIAssistantModal } from "../AIAssistantModal";
 import { useSetupDraft } from "@/hooks/useSetupDraft";
 import { useSetupUndo } from "@/hooks/useSetupUndo";
+import { useEmpresa } from "@/contexts/EmpresaContext";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -142,15 +143,53 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
   const [rows, setRows] = useState<GridRow[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
+  const [isLoadingFromDB, setIsLoadingFromDB] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
   const [progress, setProgress] = useState(0);
   const [activeUndo, setActiveUndo] = useState<{ id: string; count: number; expiresAt: string } | null>(null);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const [dbEmpresasCount, setDbEmpresasCount] = useState<number>(0);
+  const [showConflictBanner, setShowConflictBanner] = useState(false);
   const hasRestoredRef = useRef(false);
   
   const { saveDraft, getStepDraft, clearStepDraft, isLoaded, wasRestoreShown, markRestoreShown, hasStepDraft } = useSetupDraft();
   const { createSnapshot, getSnapshot, removeSnapshot } = useSetupUndo();
+  const { refetchEmpresas } = useEmpresa();
+
+  // Convert database records to GridRow format
+  const dbRecordToGridRow = (empresa: { id: string; nome: string; cnpj: string; razao_social?: string | null; contato_email?: string | null; contato_telefone?: string | null; is_demo?: boolean }): GridRow => {
+    return {
+      id: empresa.id,
+      data: {
+        nome: empresa.nome || '',
+        cnpj: empresa.cnpj || '',
+        razao_social: empresa.razao_social || '',
+        contato_email: empresa.contato_email || '',
+        contato_telefone: empresa.contato_telefone || '',
+        _savedId: empresa.id,
+        _isDemo: empresa.is_demo ? 'true' : 'false',
+      },
+      errors: {},
+    };
+  };
+
+  // Load empresas from database
+  const loadFromDatabase = async (): Promise<GridRow[]> => {
+    const { data, error } = await supabase
+      .from('empresas')
+      .select('id, nome, cnpj, razao_social, contato_email, contato_telefone, is_demo')
+      .eq('ativo', true)
+      .order('is_demo')
+      .order('nome');
+    
+    if (error) {
+      console.error('Error loading empresas:', error);
+      return [];
+    }
+    
+    return (data || []).map(dbRecordToGridRow);
+  };
 
   // Handle AI parsed data
   const handleAIParsed = (parsedRows: Record<string, any>[]) => {
@@ -201,29 +240,123 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
     });
   };
 
-  // Load draft on mount - only once
+  // Load draft or database on mount
   useEffect(() => {
-    // Guard: only restore once per component lifecycle and session
     if (!isLoaded || hasRestoredRef.current) return;
+    hasRestoredRef.current = true;
     
-    const draftData = getStepDraft('empresas');
-    if (draftData.length > 0) {
-      setRows(draftData);
-      hasRestoredRef.current = true;
+    const initializeData = async () => {
+      setIsLoadingFromDB(true);
       
-      // Only show toast if not already shown in this session
-      if (!wasRestoreShown('empresas')) {
-        markRestoreShown('empresas');
-        toast.info('Rascunho restaurado', { 
-          description: `${draftData.length} empresa(s)`,
-          action: {
-            label: 'Dispensar',
-            onClick: () => {}, // Toast will dismiss automatically
-          },
-        });
+      try {
+        // Load from database first to know what exists
+        const dbRows = await loadFromDatabase();
+        setDbEmpresasCount(dbRows.length);
+        
+        const draftData = getStepDraft('empresas');
+        const hasDraft = draftData.length > 0;
+        
+        if (!hasDraft) {
+          // No draft - load from database automatically
+          if (dbRows.length > 0) {
+            setRows(dbRows);
+            toast.success('Empresas carregadas do sistema', {
+              description: `${dbRows.length} empresa(s) encontrada(s)`,
+            });
+          }
+        } else {
+          // Draft exists - show conflict banner if DB has data
+          setRows(draftData);
+          
+          if (dbRows.length > 0 && !wasRestoreShown('empresas')) {
+            setShowConflictBanner(true);
+            markRestoreShown('empresas');
+          } else if (!wasRestoreShown('empresas')) {
+            markRestoreShown('empresas');
+            toast.info('Rascunho restaurado', { 
+              description: `${draftData.length} empresa(s)`,
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing empresas data:', error);
+      } finally {
+        setIsLoadingFromDB(false);
       }
+    };
+    
+    initializeData();
+  }, [isLoaded]);
+
+  // Handle replacing draft with database data
+  const handleReplaceWithDB = async () => {
+    setIsLoadingFromDB(true);
+    try {
+      const dbRows = await loadFromDatabase();
+      setRows(dbRows);
+      clearStepDraft('empresas');
+      setShowConflictBanner(false);
+      toast.success('Dados substituídos pelo sistema', {
+        description: `${dbRows.length} empresa(s) carregada(s)`,
+      });
+    } catch (error) {
+      toast.error('Erro ao carregar do sistema');
+    } finally {
+      setIsLoadingFromDB(false);
     }
-  }, [isLoaded]); // Only depend on isLoaded, not getStepDraft
+  };
+
+  // Handle merging draft with database data (by CNPJ)
+  const handleMergeWithDB = async () => {
+    setIsLoadingFromDB(true);
+    try {
+      const dbRows = await loadFromDatabase();
+      
+      // Get CNPJs from current rows (draft)
+      const existingCnpjs = new Set(
+        rows.map(r => normalizeCNPJ(r.data.cnpj || ''))
+      );
+      
+      // Add DB rows that don't exist in draft
+      const newFromDB = dbRows.filter(
+        dbRow => !existingCnpjs.has(normalizeCNPJ(dbRow.data.cnpj || ''))
+      );
+      
+      if (newFromDB.length > 0) {
+        const mergedRows = [...rows, ...newFromDB];
+        setRows(mergedRows);
+        saveDraft('empresas', mergedRows);
+        toast.success('Dados mesclados', {
+          description: `${newFromDB.length} empresa(s) adicionada(s) do sistema`,
+        });
+      } else {
+        toast.info('Nenhuma empresa nova para adicionar');
+      }
+      setShowConflictBanner(false);
+    } catch (error) {
+      toast.error('Erro ao mesclar dados');
+    } finally {
+      setIsLoadingFromDB(false);
+    }
+  };
+
+  // Handle keeping draft only
+  const handleKeepDraft = () => {
+    setShowConflictBanner(false);
+    toast.info('Mantendo rascunho local');
+  };
+
+  // Manual refresh from database
+  const handleRefreshFromDB = async () => {
+    if (rows.length > 0) {
+      // Ask for confirmation if there are rows
+      const confirmed = window.confirm(
+        'Isso substituirá os dados atuais pelo conteúdo do banco de dados. Continuar?'
+      );
+      if (!confirmed) return;
+    }
+    await handleReplaceWithDB();
+  };
 
   // Handle clearing draft
   const handleClearDraft = () => {
@@ -394,6 +527,9 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
       const snapshotId = createSnapshot('empresas', previousData, updatedRows.map(r => r.data));
       const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
       setActiveUndo({ id: snapshotId, count: created + updated, expiresAt });
+      
+      // Refresh the global empresa list so dropdown updates without F5
+      await refetchEmpresas();
     }
 
     // Post-apply verification
@@ -483,6 +619,57 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
 
   return (
     <div className="space-y-6">
+      {/* Loading indicator */}
+      {isLoadingFromDB && (
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm">Carregando empresas do sistema...</span>
+        </div>
+      )}
+
+      {/* Conflict banner - draft vs database */}
+      {showConflictBanner && dbEmpresasCount > 0 && (
+        <Alert variant="default" className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="flex flex-col gap-3">
+            <span>
+              Você está vendo um <strong>rascunho local</strong> com {rows.length} empresa(s). 
+              Existem <strong>{dbEmpresasCount}</strong> empresa(s) cadastradas no sistema.
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={handleReplaceWithDB}
+                disabled={isLoadingFromDB}
+                className="gap-1"
+              >
+                <Database className="h-3 w-3" />
+                Substituir pelo Sistema
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={handleMergeWithDB}
+                disabled={isLoadingFromDB}
+                className="gap-1"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Mesclar
+              </Button>
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                onClick={handleKeepDraft}
+                className="gap-1"
+              >
+                Manter rascunho
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
@@ -496,7 +683,7 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
         rows={rows}
         onRowsChange={setRows}
         emptyMessage="Nenhuma empresa. Clique em 'Adicionar' ou cole do Excel."
-        isSaving={isSaving}
+        isSaving={isSaving || isLoadingFromDB}
         progress={isSaving ? progress : undefined}
         onAutoSave={handleAutoSave}
       />
@@ -512,6 +699,22 @@ export function EmpresasStep({ onStatusUpdate }: EmpresasStepProps) {
           >
             <Sparkles className="h-4 w-4" />
             Assistente IA
+          </Button>
+          
+          {/* Refresh from DB Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefreshFromDB}
+            disabled={isLoadingFromDB || isSaving}
+            className="gap-1"
+          >
+            {isLoadingFromDB ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Database className="h-4 w-4" />
+            )}
+            Atualizar do Sistema
           </Button>
           
           {/* Clear Draft Button */}
